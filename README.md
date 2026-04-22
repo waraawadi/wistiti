@@ -29,6 +29,33 @@ docker compose -f docker-compose.dev.yml up -d --build
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```
 
+### Production avec Nginx Proxy Manager (recommandé)
+
+- Le service `nginx` du projet sert uniquement de reverse proxy **interne** en HTTP (`expose: 80`) et rejoint le réseau Docker externe `proxy`.
+- Le TLS/Let's Encrypt est géré par **Nginx Proxy Manager**, pas par ce compose.
+
+Pré-requis :
+
+```bash
+docker network create proxy || true
+```
+
+Déploiement :
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```
+
+Dans Nginx Proxy Manager (Proxy Host) :
+
+- **Domain Names**: votre domaine
+- **Forward Hostname / IP**: `photoevent-nginx`
+- **Forward Port**: `80`
+- **Websockets Support**: activé
+- **SSL**: certificat Let's Encrypt activé (Force SSL recommandé)
+
+Pensez à configurer `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `PUBLIC_FRONTEND_BASE_URL`, `PUBLIC_BACKEND_BASE_URL`, `NEXT_PUBLIC_API_URL` et `NEXT_PUBLIC_WS_URL` avec vos domaines de prod.
+
 **Aller vite avec des images déjà présentes :** les services `postgres`, `redis` et `nginx` utilisent `pull_policy: if_not_present` (pas de re-téléchargement si la couche est locale). Les builds `django` / `frontend` ont `pull: false` pour réutiliser le `FROM` local (`python:3.12-slim`, `node:20-alpine`) au lieu de toujours interroger le registry. Vous pouvez forcer la version déjà sur votre disque via `.env` : `POSTGRES_IMAGE`, `REDIS_IMAGE`, `NGINX_IMAGE`. Activez BuildKit (souvent par défaut) pour les caches `apt` / `pip` / `pnpm` dans les Dockerfiles.
 
 - **API + médias** : [http://localhost](http://localhost) (Nginx → Daphne, `/media/` en local)

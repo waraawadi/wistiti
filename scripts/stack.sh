@@ -80,19 +80,21 @@ compose_dev() {
 }
 
 compose_vps_prod() {
-  docker compose "${COMPOSE_VPS[@]}" "$@"
+  local env_file=()
+  if [[ -f "${ROOT}/.env.prod" ]]; then
+    env_file=(--env-file "${ROOT}/.env.prod")
+  fi
+  docker compose "${env_file[@]}" "${COMPOSE_VPS[@]}" "$@"
 }
 
 action_up_prod() {
   ensure_env_prod_hint
   info "Démarrage stack **production** (docker-compose.prod.yml — VPS / préprod)…"
-  if [[ -f "${ROOT}/.env.prod" ]]; then
-    docker compose --env-file "${ROOT}/.env.prod" "${COMPOSE_VPS[@]}" up -d --build
-  else
+  if [[ ! -f "${ROOT}/.env.prod" ]]; then
     warn "Pas de .env.prod : variables depuis l'environnement ou .env à la racine du projet."
-    compose_vps_prod up -d --build
   fi
-  info "HTTP :80 / HTTPS :443 — voir docs/deploy_vps_ubuntu22.md pour TLS."
+  compose_vps_prod up -d --build
+  info "Mode Nginx Proxy Manager : le service nginx est exposé en interne (proxy network), TLS géré par NPM."
 }
 
 action_up_dev() {
@@ -147,7 +149,7 @@ action_logs() {
 }
 
 action_logs_vps() {
-  read -r -p "Service (django_wsgi, django_asgi, nginx, frontend, postgres, redis, celery_worker, celery_beat) ou Entrée pour tous : " svc
+  read -r -p "Service (django_wsgi, django_asgi, nginx, frontend_wistitii, postgres, redis, celery_worker, celery_beat) ou Entrée pour tous : " svc
   if [[ -n "${svc}" ]]; then
     compose_vps_prod logs -f --tail=200 "${svc}"
   else
@@ -163,7 +165,7 @@ action_rebuild_prod_nocache() {
 
 action_rebuild_vps_frontend_nocache() {
   info "Rebuild frontend sans cache, puis up (prod VPS)…"
-  compose_vps_prod build --no-cache frontend
+  compose_vps_prod build --no-cache frontend_wistitii
   compose_vps_prod up -d
 }
 
@@ -235,21 +237,9 @@ action_check_prod() {
 }
 
 action_certbot_first_issue() {
-  ensure_env_prod_hint
-  warn "Nécessite un domaine pointé sur le VPS + ports 80/443 ouverts."
-  read -r -p "Domaine (ex: example.com) : " domain
-  read -r -p "Email (Let's Encrypt) : " email
-  if [[ -z "${domain}" || -z "${email}" ]]; then
-    err "Domaine/email requis."
-    return 1
-  fi
-  info "1) Démarre nginx (HTTP) pour challenge webroot…"
-  compose_vps_prod up -d nginx
-  info "2) Demande certificat…"
-  compose_vps_prod run --rm certbot certonly --webroot -w /var/www/certbot -d "${domain}" --email "${email}" --agree-tos --no-eff-email
-  info "3) Redémarre nginx…"
-  compose_vps_prod restart nginx
-  warn "Important: éditez nginx.prod.conf et remplacez example.com par ${domain} (chemins certificats)."
+  warn "Action obsolète: en mode Nginx Proxy Manager, le certificat TLS est géré par NPM."
+  warn "Configurez le Proxy Host NPM vers photoevent-nginx:80 avec WebSocket et Let's Encrypt."
+  return 0
 }
 
 show_menu() {
