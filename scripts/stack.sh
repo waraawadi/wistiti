@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PhotoEvent — menu Docker ultra simple (dev / prod / stop)
 # Usage (avec menu) : ./scripts/stack.sh
-# Usage (direct)    : ./scripts/stack.sh dev | prod | down | down-v
+# Usage (direct)    : ./scripts/stack.sh dev | prod | down | down-v | ps-dev | ps-prod | logs-dev | logs-prod | superuser-dev | superuser-prod
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -250,6 +250,12 @@ show_menu() {
   info "  2) PROD (docker-compose.prod.yml — .env.prod si présent)"
   info "  3) STOP (dev + prod compose)"
   info "  4) STOP + SUPPRIMER VOLUMES (dev + prod)"
+  info "  5) Suivi DEV (etat des conteneurs)"
+  info "  6) Suivi PROD (etat des conteneurs)"
+  info "  7) Logs DEV"
+  info "  8) Logs PROD"
+  info "  9) Creer superuser DEV"
+  info " 10) Creer superuser PROD"
   info "  0) Quitter"
   info "=========================================="
 }
@@ -259,7 +265,7 @@ ensure_env_hint
 load_dotenv
 ensure_ports
 
-# Non interactif : ./scripts/stack.sh dev|prod|down|down-v
+# Non interactif : ./scripts/stack.sh dev|prod|down|down-v|ps-dev|ps-prod|logs-dev|logs-prod|superuser-dev|superuser-prod
 case "${1:-}" in
   prod)
     action_up_prod
@@ -277,6 +283,30 @@ case "${1:-}" in
     action_down_with_volumes
     exit 0
     ;;
+  ps-dev)
+    action_ps
+    exit 0
+    ;;
+  ps-prod)
+    action_ps_vps
+    exit 0
+    ;;
+  logs-dev)
+    action_logs
+    exit 0
+    ;;
+  logs-prod)
+    action_logs_vps
+    exit 0
+    ;;
+  superuser-dev)
+    action_createsuperuser
+    exit 0
+    ;;
+  superuser-prod)
+    action_createsuperuser_vps
+    exit 0
+    ;;
 esac
 
 while true; do
@@ -287,6 +317,12 @@ while true; do
     2) action_up_prod ;;
     3) action_down ;;
     4) action_down_with_volumes ;;
+    5) action_ps ;;
+    6) action_ps_vps ;;
+    7) action_logs ;;
+    8) action_logs_vps ;;
+    9) action_createsuperuser ;;
+    10) action_createsuperuser_vps ;;
     0)
       info "Au revoir."
       exit 0
