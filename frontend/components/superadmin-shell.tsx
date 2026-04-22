@@ -106,7 +106,7 @@ export function SuperAdminShell({ children }: { children: React.ReactNode }) {
       <NavLink href="/superadmin/evenements" label="Événements" icon={Folder} onNavigate={() => setMobileOpen(false)} />
       <NavLink href="/superadmin/plans" label="Plans" icon={Package} onNavigate={() => setMobileOpen(false)} />
       <NavLink href="/superadmin/paiements" label="Paiements" icon={Banknote} onNavigate={() => setMobileOpen(false)} />
-      <NavLink href="/admin/config" label="Thème & tarifs" icon={Settings} onNavigate={() => setMobileOpen(false)} />
+      <NavLink href="/config/config" label="Thème & tarifs" icon={Settings} onNavigate={() => setMobileOpen(false)} />
     </>
   );
 
