@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PhotoEvent — menu Docker ultra simple (dev / prod / stop)
 # Usage (avec menu) : ./scripts/stack.sh
-# Usage (direct)    : ./scripts/stack.sh dev | prod | down
+# Usage (direct)    : ./scripts/stack.sh dev | prod | down | down-v
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -109,16 +109,17 @@ action_down() {
   compose_vps_prod down --remove-orphans 2>/dev/null || true
 }
 
-action_down_dev_reset_all() {
-  warn "Cette action supprime les volumes (Postgres, media, etc.)."
-  read -r -p "Confirmer reset complet local ? tapez 'OUI' : " c
+action_down_with_volumes() {
+  warn "Cette action supprime les volumes Docker (Postgres, media, static, etc.)."
+  read -r -p "Confirmer arrêt + suppression volumes (dev + prod) ? tapez 'OUI' : " c
   if [[ "${c:-}" != "OUI" ]]; then
     info "Annulé."
     return 0
   fi
-  info "Arrêt + suppression volumes (stack dev uniquement)…"
-  compose_dev down -v --remove-orphans || true
-  info "OK. Relance ensuite via le menu (dev ou prod)."
+  info "Arrêt + suppression volumes (dev + prod compose)…"
+  compose_dev down -v --remove-orphans 2>/dev/null || true
+  compose_vps_prod down -v --remove-orphans 2>/dev/null || true
+  info "OK. Les volumes de ce projet ont été supprimés."
 }
 
 action_fix_postgres_version_hint() {
@@ -248,6 +249,7 @@ show_menu() {
   info "  1) DEV (docker-compose.dev.yml — hot reload)"
   info "  2) PROD (docker-compose.prod.yml — .env.prod si présent)"
   info "  3) STOP (dev + prod compose)"
+  info "  4) STOP + SUPPRIMER VOLUMES (dev + prod)"
   info "  0) Quitter"
   info "=========================================="
 }
@@ -257,7 +259,7 @@ ensure_env_hint
 load_dotenv
 ensure_ports
 
-# Non interactif : ./scripts/stack.sh dev|prod|down
+# Non interactif : ./scripts/stack.sh dev|prod|down|down-v
 case "${1:-}" in
   prod)
     action_up_prod
@@ -271,6 +273,10 @@ case "${1:-}" in
     action_down
     exit 0
     ;;
+  down-v|reset)
+    action_down_with_volumes
+    exit 0
+    ;;
 esac
 
 while true; do
@@ -280,6 +286,7 @@ while true; do
     1) action_up_dev ;;
     2) action_up_prod ;;
     3) action_down ;;
+    4) action_down_with_volumes ;;
     0)
       info "Au revoir."
       exit 0
