@@ -1,0 +1,80 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary: 330 99% 41%;
+    --color-secondary: 258 94% 44%;
+    --color-white: 0 0% 100%;
+    --color-primary-hex: #d2016f;
+    --color-secondary-hex: #4e07d9;
+    --gradient-main: linear-gradient(135deg, #d2016f, #4e07d9);
+    --color-primary-light: 330 99% 94%;
+    --color-secondary-light: 258 94% 94%;
+    --shadow-glow: 0 4px 24px rgba(210, 1, 111, 0.12);
+    --radius-card: 16px;
+    --radius-button: 12px;
+    --radius-input: 8px;
+
+    --background: 0 0% 100%;
+    --foreground: 240 10% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 10%;
+    --primary: 330 99% 41%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 258 94% 44%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 330 99% 94%;
+    --accent-foreground: 330 99% 41%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 330 99% 41%;
+    --radius: 0.75rem;
+
+    --sidebar-background: 258 94% 10%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 330 99% 41%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 258 60% 20%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 258 40% 18%;
+    --sidebar-ring: 330 99% 41%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'DM Sans', sans-serif;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Syne', sans-serif;
+  }
+}
+
+@layer utilities {
+  .gradient-text {
+    background: var(--gradient-main);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .gradient-bg {
+    background: var(--gradient-main);
+  }
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+}

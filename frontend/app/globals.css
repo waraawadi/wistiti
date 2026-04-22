@@ -1,0 +1,242 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "../styles/theme.css";
+
+@layer base {
+  :root {
+    /* Style system (ne pas hardcoder les couleurs : utiliser --color-*) */
+    --shadow-glow: 0 4px 24px color-mix(in srgb, var(--color-primary) 18%, transparent);
+    --radius-card: 16px;
+    --radius-button: 12px;
+    --radius-input: 8px;
+
+    --border: color-mix(in srgb, black 10%, transparent);
+    --muted: color-mix(in srgb, black 4%, transparent);
+    --muted-foreground: color-mix(in srgb, black 55%, transparent);
+    --foreground: color-mix(in srgb, black 92%, transparent);
+    --background: var(--color-white);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-body), system-ui, sans-serif;
+    letter-spacing: 0.01em;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display), system-ui, sans-serif;
+    letter-spacing: 0.01em;
+  }
+}
+
+@layer utilities {
+  .gradient-text {
+    background: var(--gradient-main);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .gradient-bg {
+    background: var(--gradient-main);
+  }
+
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+
+  /** Fond marketing : primaire + secondaire + blanc (variables admin). */
+  .marketing-hero-mesh {
+    background-color: var(--color-white);
+    background-image:
+      radial-gradient(ellipse 90% 55% at 50% -25%, color-mix(in srgb, var(--color-primary) 28%, transparent), transparent 55%),
+      radial-gradient(ellipse 70% 45% at 100% 5%, color-mix(in srgb, var(--color-secondary) 24%, transparent), transparent 50%),
+      radial-gradient(ellipse 50% 35% at 0% 90%, color-mix(in srgb, var(--color-secondary) 15%, transparent), transparent 45%),
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--color-primary) 7%, var(--color-white)) 0%,
+        var(--color-white) 38%,
+        var(--color-white) 100%
+      );
+  }
+
+  .marketing-gradient-bar {
+    height: 4px;
+    width: 100%;
+    max-width: 28rem;
+    background: var(--gradient-main);
+    border-radius: 999px;
+    opacity: 0.95;
+    box-shadow: 0 0 24px color-mix(in srgb, var(--color-primary) 35%, transparent);
+  }
+
+  /** Grille discrète façon produit SaaS récent */
+  .marketing-dot-grid {
+    background-image: radial-gradient(
+      circle at center,
+      color-mix(in srgb, var(--foreground) 11%, transparent) 1.5px,
+      transparent 1.5px
+    );
+    background-size: 28px 28px;
+  }
+
+  /** Panneau verre dépoli */
+  .marketing-glass {
+    background: color-mix(in srgb, var(--color-white) 65%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+    box-shadow: 0 4px 30px color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+
+  .marketing-glass-subtle {
+    background: color-mix(in srgb, var(--background) 82%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+
+  /** Carte avec relief (lévitation : ajouter .marketing-card-lift) */
+  .marketing-card {
+    border-radius: 1.35rem;
+    background: linear-gradient(
+      165deg,
+      var(--background) 0%,
+      color-mix(in srgb, var(--muted) 55%, var(--background)) 100%
+    );
+    border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--color-white) 90%, transparent) inset,
+      0 20px 50px -28px color-mix(in srgb, var(--foreground) 18%, transparent);
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.3s ease;
+  }
+
+  .marketing-card-lift:hover {
+    transform: translateY(-5px);
+    border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--color-white) 90%, transparent) inset,
+      0 28px 60px -24px color-mix(in srgb, var(--color-primary) 22%, transparent);
+  }
+
+  .marketing-card:not(.marketing-card-lift):hover {
+    border-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--color-white) 90%, transparent) inset,
+      0 24px 48px -22px color-mix(in srgb, var(--color-primary) 15%, transparent);
+  }
+
+  @keyframes marketing-float {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-10px) rotate(0.5deg);
+    }
+  }
+
+  .marketing-float-slow {
+    animation: marketing-float 7s ease-in-out infinite;
+  }
+
+  @keyframes marketing-shine {
+    0% {
+      background-position: 200% center;
+    }
+    100% {
+      background-position: -200% center;
+    }
+  }
+
+  .marketing-shimmer-text {
+    background: linear-gradient(
+      90deg,
+      var(--color-primary),
+      var(--color-secondary),
+      var(--color-primary)
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: marketing-shine 8s linear infinite;
+  }
+
+  /**
+   * Sidebar dashboard / super-admin : bande large, fond très sombre teinté par les couleurs marque (--color-primary / --color-secondary).
+   */
+  .dashboard-sidebar-surface {
+    color: var(--color-white);
+    background-color: color-mix(in srgb, black 92%, var(--color-primary));
+    background-image:
+      linear-gradient(165deg, rgba(255, 255, 255, 0.06) 0%, transparent 52%),
+      linear-gradient(
+        155deg,
+        color-mix(in srgb, var(--color-primary) 32%, black) 0%,
+        color-mix(in srgb, var(--color-secondary) 26%, black) 46%,
+        color-mix(in srgb, black 88%, var(--color-secondary)) 100%
+      ),
+      radial-gradient(ellipse 120% 95% at -10% -8%, color-mix(in srgb, var(--color-primary) 48%, transparent), transparent 58%),
+      radial-gradient(ellipse 100% 88% at 108% 102%, color-mix(in srgb, var(--color-secondary) 42%, transparent), transparent 54%),
+      radial-gradient(circle at center, rgba(255, 255, 255, 0.13) 1.5px, transparent 1.5px);
+    background-size: auto, auto, auto, auto, 28px 28px;
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+    box-shadow:
+      4px 0 36px -10px color-mix(in srgb, black 58%, transparent),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  }
+
+  /** Espace connecté (dashboard) — surface = <main> (flex-1 dans le shell : au moins toute la fenêtre) */
+  .dashboard-canvas {
+    background-color: color-mix(in srgb, var(--muted) 32%, var(--background));
+    background-image: radial-gradient(
+      circle at center,
+      color-mix(in srgb, var(--foreground) 9%, transparent) 1.5px,
+      transparent 1.5px
+    );
+    background-size: 26px 26px;
+    background-repeat: repeat;
+  }
+
+  .dashboard-panel {
+    border-radius: 1.25rem;
+    border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+    background: color-mix(in srgb, var(--background) 92%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--color-white) 85%, transparent) inset,
+      0 22px 50px -30px color-mix(in srgb, var(--foreground) 14%, transparent);
+  }
+
+  .dashboard-stat-card {
+    border-radius: 1.25rem;
+    border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+    background: linear-gradient(
+      165deg,
+      var(--background) 0%,
+      color-mix(in srgb, var(--muted) 50%, var(--background)) 100%
+    );
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--color-white) 88%, transparent) inset,
+      0 16px 40px -28px color-mix(in srgb, var(--foreground) 12%, transparent);
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease, border-color 0.25s ease;
+  }
+
+  .dashboard-stat-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--color-white) 88%, transparent) inset,
+      0 22px 48px -24px color-mix(in srgb, var(--color-primary) 18%, transparent);
+  }
+}

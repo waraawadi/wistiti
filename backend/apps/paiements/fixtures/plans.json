@@ -1,0 +1,67 @@
+[
+  {
+    "model": "paiements.plan",
+    "pk": 1,
+    "fields": {
+      "nom": "Gratuit",
+      "prix_xof": 0,
+      "nb_uploads_max": 50,
+      "nb_evenements_max": 1,
+      "nb_albums_max": 2,
+      "duree_jours": 1,
+      "hq_enabled": false,
+      "moderation_enabled": true,
+      "moderation_avancee": false,
+      "support_prioritaire": false
+    }
+  },
+  {
+    "model": "paiements.plan",
+    "pk": 2,
+    "fields": {
+      "nom": "Plus",
+      "prix_xof": 9900,
+      "nb_uploads_max": 500,
+      "nb_evenements_max": -1,
+      "nb_albums_max": -1,
+      "duree_jours": 30,
+      "hq_enabled": true,
+      "moderation_enabled": true,
+      "moderation_avancee": true,
+      "support_prioritaire": true
+    }
+  },
+  {
+    "model": "paiements.plan",
+    "pk": 3,
+    "fields": {
+      "nom": "Pro",
+      "prix_xof": 24900,
+      "nb_uploads_max": -1,
+      "nb_evenements_max": -1,
+      "nb_albums_max": -1,
+      "duree_jours": 90,
+      "hq_enabled": true,
+      "moderation_enabled": true,
+      "moderation_avancee": true,
+      "support_prioritaire": true
+    }
+  },
+  {
+    "model": "paiements.plan",
+    "pk": 4,
+    "fields": {
+      "nom": "Professionnel (sur devis)",
+      "prix_xof": 0,
+      "nb_uploads_max": -1,
+      "nb_evenements_max": -1,
+      "nb_albums_max": -1,
+      "duree_jours": 365,
+      "hq_enabled": true,
+      "moderation_enabled": true,
+      "moderation_avancee": true,
+      "support_prioritaire": true
+    }
+  }
+]
+

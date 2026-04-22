@@ -1,0 +1,10 @@
+:root {
+  --color-primary: #d2016f;
+  --color-secondary: #4e07d9;
+  --color-white: #ffffff;
+  --gradient-main: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  --color-primary-light: color-mix(in srgb, var(--color-primary) 15%, white);
+  --color-secondary-light: color-mix(in srgb, var(--color-secondary) 15%, white);
+  --color-primary-dark: color-mix(in srgb, var(--color-primary) 80%, black);
+}
+

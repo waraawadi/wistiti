@@ -1,0 +1,5 @@
+# Image légère pour hot-reload : le code est monté en volume.
+FROM node:20-alpine
+RUN corepack enable && corepack prepare pnpm@9.14.4 --activate
+WORKDIR /app
+EXPOSE 3000
