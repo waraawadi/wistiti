@@ -3,8 +3,12 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Iterable
 
-import numpy as np
 from PIL import Image, ImageOps
+
+try:
+    import numpy as np
+except Exception:  # pragma: no cover - dépendance optionnelle à l'exécution
+    np = None
 
 try:
     import cv2
@@ -16,6 +20,8 @@ EMBEDDING_DIM = 128
 
 
 def _to_bgr_array(file_bytes: bytes) -> np.ndarray | None:
+    if np is None:
+        return None
     if cv2 is not None:
         arr = np.frombuffer(file_bytes, dtype=np.uint8)
         img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -50,6 +56,8 @@ def _detect_face(gray: np.ndarray) -> tuple[int, int, int, int] | None:
 
 
 def _embedding_from_face(face_gray: np.ndarray) -> list[float]:
+    if np is None:
+        return [0.0] * EMBEDDING_DIM
     if cv2 is not None:
         face_gray = cv2.resize(face_gray, (112, 112), interpolation=cv2.INTER_AREA)
         face_gray = cv2.equalizeHist(face_gray)
@@ -71,6 +79,8 @@ def extract_face_embedding(file_bytes: bytes) -> tuple[list[float], float] | Non
     """
     Retourne (embedding, quality_score) ou None si visage non détecté.
     """
+    if np is None:
+        return None
     img = _to_bgr_array(file_bytes)
     if img is None:
         return None
@@ -91,6 +101,8 @@ def extract_face_embedding(file_bytes: bytes) -> tuple[list[float], float] | Non
 
 
 def cosine_similarity(a: Iterable[float], b: Iterable[float]) -> float:
+    if np is None:
+        return 0.0
     va = np.asarray(list(a), dtype=np.float32)
     vb = np.asarray(list(b), dtype=np.float32)
     if va.size == 0 or vb.size == 0:
