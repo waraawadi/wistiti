@@ -7,7 +7,8 @@ from django.core.mail import send_mail
 
 from PIL import Image, ImageOps
 
-from .models import Media
+from .face_tools import extract_face_embedding
+from .models import Media, MediaFaceEncoding
 
 
 @shared_task
@@ -94,6 +95,23 @@ def process_photo(media_id: int) -> str:
         )
 
         media.save(update_fields=["fichier", "thumbnail"])
+
+        try:
+            media.fichier.open("rb")
+            payload = media.fichier.read()
+        finally:
+            media.fichier.close()
+        face_data = extract_face_embedding(payload)
+        if face_data is not None:
+            emb, quality = face_data
+            MediaFaceEncoding.objects.update_or_create(
+                media=media,
+                defaults={
+                    "embedding": emb,
+                    "embedding_dim": len(emb),
+                    "quality_score": quality,
+                },
+            )
         return "ok"
     finally:
         f.close()

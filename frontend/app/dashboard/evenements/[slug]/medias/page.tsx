@@ -21,6 +21,12 @@ type Media = {
   created_at: string;
 };
 
+type Album = {
+  id: number;
+  nom: string;
+  slug: string;
+};
+
 export default function EvenementMediasPage({ params }: { params: { slug: string } }) {
   const slug = params.slug;
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -28,10 +34,22 @@ export default function EvenementMediasPage({ params }: { params: { slug: string
   const [tab, setTab] = useState<"medias" | "moderation">("medias");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [preview, setPreview] = useState<Media | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadLegend, setUploadLegend] = useState("");
+  const [uploadAlbum, setUploadAlbum] = useState("public");
+  const [uploadResult, setUploadResult] = useState<{ uploaded: number; failed: Array<{ name: string; detail: string }> } | null>(
+    null,
+  );
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const { data: medias, refetch: refetchMedias } = useQuery({
     queryKey: ["evenement-medias", slug],
     queryFn: async () => (await api.get<Media[]>(`/api/evenements/${slug}/medias/`)).data,
+  });
+  const { data: albums } = useQuery({
+    queryKey: ["evenement-albums", slug],
+    queryFn: async () => (await api.get<Album[]>(`/api/evenements/${slug}/albums/`)).data,
   });
 
   const pending = (medias ?? []).filter((m) => !m.approuve);
@@ -62,6 +80,39 @@ export default function EvenementMediasPage({ params }: { params: { slug: string
     setPreviewOpen(true);
   }
 
+  async function uploadBatch() {
+    setUploadError(null);
+    setUploadResult(null);
+    if (uploadFiles.length === 0) {
+      setUploadError("Sélectionne au moins un fichier.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      uploadFiles.forEach((f) => fd.append("fichiers", f));
+      if (uploadLegend.trim()) fd.append("legende", uploadLegend.trim());
+
+      const { data } = await api.post<{
+        uploaded: number;
+        failed: Array<{ name: string; detail: string }>;
+      }>(`/api/evenements/${slug}/medias/?album=${encodeURIComponent(uploadAlbum || "public")}`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setUploadResult({
+        uploaded: data.uploaded ?? 0,
+        failed: data.failed ?? [],
+      });
+      setUploadFiles([]);
+      setUploadLegend("");
+      await refetchMedias();
+    } catch (e: any) {
+      setUploadError(e?.response?.data?.detail || "Upload impossible.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <DashboardPageHeader
@@ -78,6 +129,80 @@ export default function EvenementMediasPage({ params }: { params: { slug: string
           </>
         }
       />
+
+      <div className="dashboard-panel p-5 md:p-6 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Upload en masse (organisateur)</h2>
+            <p className="text-sm text-muted-foreground">
+              Envoie plusieurs photos/vidéos d’un coup sur l’album de ton choix.
+            </p>
+          </div>
+          <span className="text-xs rounded-full px-2.5 py-1 bg-muted text-muted-foreground">
+            {uploadFiles.length} fichier(s) prêt(s)
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="md:col-span-1">
+            <label className="text-xs text-muted-foreground">Album cible</label>
+            <select
+              className="mt-1 h-10 w-full rounded-[var(--radius-input)] border bg-background px-3 text-sm"
+              value={uploadAlbum}
+              onChange={(e) => setUploadAlbum(e.target.value)}
+            >
+              {(albums ?? []).map((a) => (
+                <option key={a.id} value={a.slug}>
+                  {a.nom}
+                </option>
+              ))}
+              {albums?.length ? null : <option value="public">Public</option>}
+            </select>
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-xs text-muted-foreground">Légende (optionnelle, appliquée à tous les fichiers)</label>
+            <input
+              className="mt-1 h-10 w-full rounded-[var(--radius-input)] border bg-background px-3 text-sm"
+              value={uploadLegend}
+              onChange={(e) => setUploadLegend(e.target.value)}
+              placeholder="Ex: Backstage cérémonie"
+              maxLength={255}
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col md:flex-row md:items-center gap-3">
+          <input
+            type="file"
+            multiple
+            accept="image/*,video/*"
+            className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:border-border file:bg-background file:px-3 file:py-2"
+            onChange={(e) => setUploadFiles(Array.from(e.target.files ?? []))}
+          />
+          <Button onClick={uploadBatch} disabled={uploading || uploadFiles.length === 0} className="md:whitespace-nowrap">
+            {uploading ? "Envoi en cours..." : "Uploader en masse"}
+          </Button>
+        </div>
+
+        {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
+        {uploadResult && (
+          <div className="rounded-[var(--radius-card)] border bg-muted/30 p-3 space-y-2">
+            <p className="text-sm">
+              <span className="font-semibold text-[var(--color-primary)]">{uploadResult.uploaded}</span> fichier(s) envoyé(s)
+              {uploadResult.failed.length ? `, ${uploadResult.failed.length} en erreur` : ""}.
+            </p>
+            {uploadResult.failed.length > 0 && (
+              <ul className="text-xs text-muted-foreground space-y-1">
+                {uploadResult.failed.slice(0, 5).map((f, idx) => (
+                  <li key={`${f.name}-${idx}`}>
+                    {f.name}: {f.detail}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="inline-flex p-1 rounded-xl bg-muted/50 border border-border/50">

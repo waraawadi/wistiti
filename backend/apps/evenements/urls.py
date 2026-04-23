@@ -17,6 +17,7 @@ from .views import (
     EvenementQRCodeView,
     OrganizerDashboardStatsView,
     PublicEventsListView,
+    PublicAlbumFaceSearchByCodesView,
     PublicAlbumByCodesView,
     PublicAlbumView,
 )
@@ -34,6 +35,11 @@ urlpatterns = [
         "by-code/<str:event_code>/<str:album_code>/medias/",
         EvenementMediaByCodesView.as_view(),
         name="evenements-medias-by-codes",
+    ),
+    path(
+        "by-code/<str:event_code>/<str:album_code>/face-search/",
+        PublicAlbumFaceSearchByCodesView.as_view(),
+        name="evenements-face-search-by-codes",
     ),
     path(
         "by-code/<str:event_code>/<str:album_code>/qrcode/",

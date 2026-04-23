@@ -20,7 +20,7 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 
 from .codes import is_valid_public_code, normalize_public_code
-from .models import Album, AlbumQRCode, Evenement, Media
+from .models import Album, AlbumQRCode, Evenement, Media, MediaFaceEncoding
 from .permissions import IsOwner
 from .serializers import (
     AlbumSerializer,
@@ -31,6 +31,7 @@ from .serializers import (
 from .services import build_photowall_qr_bytes, build_qr_png_bytes, make_qr_content_file
 from .tasks import notify_organizer_guest_quota_blocked, process_photo
 from .zip_tasks import generate_event_zip
+from .face_tools import cosine_similarity, extract_face_embedding
 
 
 ALLOWED_UPLOAD_MIME = {
@@ -241,6 +242,109 @@ class PublicAlbumByCodesView(generics.ListAPIView):
         return _public_album_list_response(request, evt, album, view_for_pagination=self)
 
 
+def _album_face_search_media_qs(evt: Evenement, album: Album):
+    if album.is_public:
+        return evt.medias.filter(approuve=True, album=album)
+    return evt.medias.filter(approuve=True).filter(Q(album=album) | Q(album__is_public=True))
+
+
+def _index_missing_face_encodings(media_qs, limit: int = 120) -> None:
+    media_ids = list(media_qs.values_list("id", flat=True))
+    if not media_ids:
+        return
+    existing = set(MediaFaceEncoding.objects.filter(media_id__in=media_ids).values_list("media_id", flat=True))
+    missing_ids = [mid for mid in media_ids if mid not in existing][:limit]
+    if not missing_ids:
+        return
+    photos = Media.objects.filter(id__in=missing_ids, type=Media.MediaType.PHOTO).only("id", "fichier")
+    for media in photos:
+        try:
+            media.fichier.open("rb")
+            payload = media.fichier.read()
+        except Exception:
+            continue
+        finally:
+            try:
+                media.fichier.close()
+            except Exception:
+                pass
+        face_data = extract_face_embedding(payload)
+        if face_data is None:
+            continue
+        emb, quality = face_data
+        MediaFaceEncoding.objects.update_or_create(
+            media=media,
+            defaults={
+                "embedding": emb,
+                "embedding_dim": len(emb),
+                "quality_score": quality,
+            },
+        )
+
+
+@method_decorator(ratelimit(key="ip", rate="10/m", method="POST", block=True), name="dispatch")
+class PublicAlbumFaceSearchByCodesView(APIView):
+    permission_classes = [permissions.AllowAny]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, event_code: str, album_code: str):
+        ec = normalize_public_code(event_code)
+        ac = normalize_public_code(album_code)
+        if not is_valid_public_code(ec) or not is_valid_public_code(ac):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        evt = get_object_or_404(Evenement, public_code=ec, actif=True)
+        album = get_object_or_404(Album, evenement=evt, public_code=ac)
+
+        selfie = request.FILES.get("selfie")
+        if not selfie:
+            return Response({"detail": "selfie requis"}, status=status.HTTP_400_BAD_REQUEST)
+        if not str(getattr(selfie, "content_type", "")).lower().startswith("image/"):
+            return Response({"detail": "Le selfie doit être une image."}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(selfie, "size", 0) > 10 * 1024 * 1024:
+            return Response({"detail": "Selfie trop volumineux (max 10Mo)."}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+
+        raw = selfie.read()
+        selfie_face = extract_face_embedding(raw)
+        if selfie_face is None:
+            return Response(
+                {"detail": "Aucun visage détecté. Essaie une photo plus nette, bien éclairée et de face."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        selfie_embedding, _ = selfie_face
+
+        try:
+            threshold = float(request.data.get("threshold", 0.92))
+        except Exception:
+            threshold = 0.92
+        threshold = min(max(threshold, 0.75), 0.99)
+
+        media_qs = _album_face_search_media_qs(evt, album)
+        # Backfill opportuniste pour les anciens uploads non indexés.
+        _index_missing_face_encodings(media_qs)
+        encodings = (
+            MediaFaceEncoding.objects.select_related("media")
+            .filter(media__in=media_qs)
+            .exclude(embedding=[])
+        )
+
+        matches = []
+        for row in encodings:
+            score = cosine_similarity(selfie_embedding, row.embedding or [])
+            if score >= threshold:
+                matches.append({"media_id": row.media_id, "score": round(score, 4)})
+
+        matches.sort(key=lambda item: item["score"], reverse=True)
+        return Response(
+            {
+                "matches": matches[:500],
+                "match_count": len(matches),
+                "indexed_count": encodings.count(),
+                "threshold": threshold,
+            }
+        )
+
+
 class EvenementAlbumsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -413,6 +517,8 @@ class EvenementMediaView(APIView):
         evt = get_object_or_404(Evenement, slug=slug, actif=True)
         album_slug = str(request.query_params.get("album") or "public").strip() or "public"
         album = get_object_or_404(Album, evenement=evt, slug=album_slug)
+        if bool(getattr(request.user, "is_authenticated", False)) and evt.user_id == request.user.id:
+            return _post_owner_medias_batch(request, evt, album)
         return _post_guest_media(request, evt, album)
 
 
@@ -475,18 +581,12 @@ def _post_guest_media(request, evt: Evenement, album: Album):
     if not f:
         return Response({"detail": "fichier requis"}, status=status.HTTP_400_BAD_REQUEST)
 
-    content_type = (getattr(f, "content_type", "") or "").lower()
-    if content_type not in ALLOWED_UPLOAD_MIME:
-        return Response({"detail": "MIME non supporté"}, status=status.HTTP_400_BAD_REQUEST)
-
-    if content_type.startswith("image/"):
-        media_type = Media.MediaType.PHOTO
-        if getattr(f, "size", 0) > MAX_IMAGE_BYTES:
-            return Response({"detail": "Image trop volumineuse (max 20Mo)."}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
-    else:
-        media_type = Media.MediaType.VIDEO
-        if getattr(f, "size", 0) > MAX_VIDEO_BYTES:
-            return Response({"detail": "Vidéo trop volumineuse (max 500Mo)."}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+    try:
+        media_type = _validate_media_upload_file(f)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    except OverflowError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
 
     # Règle métier demandée : tous les uploads invités sont approuvés automatiquement.
     approuve = True
@@ -524,6 +624,83 @@ def _post_guest_media(request, evt: Evenement, album: Album):
         _invalidate_album_cache(evt.slug)
 
     return Response(MediaSerializer(media, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+def _validate_media_upload_file(f) -> str:
+    content_type = (getattr(f, "content_type", "") or "").lower()
+    if content_type not in ALLOWED_UPLOAD_MIME:
+        raise ValueError("MIME non supporté")
+    if content_type.startswith("image/"):
+        if getattr(f, "size", 0) > MAX_IMAGE_BYTES:
+            raise OverflowError("Image trop volumineuse (max 20Mo).")
+        return Media.MediaType.PHOTO
+    if getattr(f, "size", 0) > MAX_VIDEO_BYTES:
+        raise OverflowError("Vidéo trop volumineuse (max 500Mo).")
+    return Media.MediaType.VIDEO
+
+
+def _post_owner_medias_batch(request, evt: Evenement, album: Album):
+    files = request.FILES.getlist("fichiers")
+    if not files:
+        single = request.FILES.get("fichier")
+        if single:
+            files = [single]
+    if not files:
+        return Response({"detail": "Aucun fichier reçu."}, status=status.HTTP_400_BAD_REQUEST)
+    if len(files) > 100:
+        return Response({"detail": "Maximum 100 fichiers par envoi."}, status=status.HTTP_400_BAD_REQUEST)
+
+    legend = str(request.data.get("legende", "") or "")[:255]
+    created_media: list[Media] = []
+    errors: list[dict] = []
+
+    for f in files:
+        try:
+            media_type = _validate_media_upload_file(f)
+            media = Media.objects.create(
+                evenement=evt,
+                album=album,
+                fichier=f,
+                type=media_type,
+                legende=legend,
+                approuve=True,
+                uploaded_by_ip=request.META.get("REMOTE_ADDR"),
+            )
+            if media.type == Media.MediaType.PHOTO:
+                process_photo.delay(media.id)
+
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f"photowall_{evt.slug}",
+                {
+                    "type": "new_media",
+                    "media": {
+                        "id": media.id,
+                        "url": request.build_absolute_uri(media.fichier.url),
+                        "type": media.type,
+                        "legende": media.legende,
+                        "created_at": media.created_at.isoformat(),
+                    },
+                },
+            )
+            created_media.append(media)
+        except OverflowError as exc:
+            errors.append({"name": getattr(f, "name", "fichier"), "detail": str(exc)})
+        except ValueError as exc:
+            errors.append({"name": getattr(f, "name", "fichier"), "detail": str(exc)})
+
+    if created_media:
+        _invalidate_album_cache(evt.slug)
+
+    payload = {
+        "uploaded": len(created_media),
+        "failed": errors,
+        "album": album.slug,
+        "created": MediaSerializer(created_media, many=True, context={"request": request}).data,
+    }
+    if not created_media:
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+    return Response(payload, status=status.HTTP_201_CREATED)
 
 
 @method_decorator(ratelimit(key="ip", rate="10/m", method="POST", block=True), name="dispatch")

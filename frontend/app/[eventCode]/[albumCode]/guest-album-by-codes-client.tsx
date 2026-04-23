@@ -85,6 +85,11 @@ export function GuestAlbumByCodesClient({
     customer: { email: string; firstname: string; lastname: string };
   } | null>(null);
   const [preview, setPreview] = useState<MediaItem | null>(null);
+  const [faceFile, setFaceFile] = useState<File | null>(null);
+  const [faceFilterIds, setFaceFilterIds] = useState<Set<number> | null>(null);
+  const [faceBusy, setFaceBusy] = useState(false);
+  const [faceError, setFaceError] = useState<string | null>(null);
+  const [faceInfo, setFaceInfo] = useState<{ indexed: number; matched: number; threshold: number } | null>(null);
   const galleryMode = mode === "gallery";
 
   const basePath = `/api/evenements/by-code/${eventCode}/${albumCode}/album/`;
@@ -127,16 +132,31 @@ export function GuestAlbumByCodesClient({
   const mediasSingle = useMemo(() => singleQ.data?.pages.flatMap((p) => p.medias) ?? [], [singleQ.data]);
   const mediasPub = useMemo(() => pubQ.data?.pages.flatMap((p) => p.medias) ?? [], [pubQ.data]);
   const mediasPriv = useMemo(() => privQ.data?.pages.flatMap((p) => p.medias) ?? [], [privQ.data]);
+  const filteredMediasSingle = useMemo(
+    () => (faceFilterIds ? mediasSingle.filter((m) => faceFilterIds.has(m.id)) : mediasSingle),
+    [faceFilterIds, mediasSingle],
+  );
+  const filteredMediasPub = useMemo(
+    () => (faceFilterIds ? mediasPub.filter((m) => faceFilterIds.has(m.id)) : mediasPub),
+    [faceFilterIds, mediasPub],
+  );
+  const filteredMediasPriv = useMemo(
+    () => (faceFilterIds ? mediasPriv.filter((m) => faceFilterIds.has(m.id)) : mediasPriv),
+    [faceFilterIds, mediasPriv],
+  );
 
   const totalLabel = useMemo(() => {
     if (!headerData) return null;
+    if (faceFilterIds) {
+      return `${faceFilterIds.size} médias correspondent au selfie`;
+    }
     if (split && init.data?.section_counts) {
       const { public: pc, private: pv } = init.data.section_counts;
       return `${pc + pv} médias approuvés (${pc} partie publique événement, ${pv} cet album privé)`;
     }
     const n = mediasSingle.length;
     return `${n} médias approuvés`;
-  }, [headerData, split, init.data?.section_counts, mediasSingle.length]);
+  }, [headerData, faceFilterIds, split, init.data?.section_counts, mediasSingle.length]);
 
   useEffect(() => {
     const el = sentinelSingleRef.current;
@@ -241,6 +261,46 @@ export function GuestAlbumByCodesClient({
     } catch (e: any) {
       setPayError(e?.response?.data?.detail || "Téléchargement impossible (paiement non confirmé).");
     }
+  }
+
+  async function runFaceSearch() {
+    setFaceError(null);
+    if (!faceFile) {
+      setFaceError("Ajoute d'abord un selfie.");
+      return;
+    }
+    setFaceBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("selfie", faceFile);
+      const { data } = await api.post<{
+        matches: Array<{ media_id: number; score: number }>;
+        match_count: number;
+        indexed_count: number;
+        threshold: number;
+      }>(`/api/evenements/by-code/${eventCode}/${albumCode}/face-search/`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setFaceFilterIds(new Set((data.matches ?? []).map((m) => m.media_id)));
+      setFaceInfo({
+        indexed: data.indexed_count ?? 0,
+        matched: data.match_count ?? 0,
+        threshold: data.threshold ?? 0.92,
+      });
+    } catch (e: any) {
+      setFaceError(e?.response?.data?.detail || "Recherche faciale impossible pour le moment.");
+      setFaceFilterIds(null);
+      setFaceInfo(null);
+    } finally {
+      setFaceBusy(false);
+    }
+  }
+
+  function clearFaceFilter() {
+    setFaceFilterIds(null);
+    setFaceInfo(null);
+    setFaceError(null);
+    setFaceFile(null);
   }
 
   function renderMasonry(medias: typeof mediasSingle) {
@@ -364,6 +424,39 @@ export function GuestAlbumByCodesClient({
 
         {galleryMode && (
           <>
+            <div className="mt-6 bg-card rounded-[var(--radius-card)] border p-4 space-y-3">
+              <div>
+                <p className="text-sm font-medium">Trouver mes photos (beta)</p>
+                <p className="text-xs text-muted-foreground">
+                  Ajoute un selfie pour filtrer automatiquement les photos qui te ressemblent.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="user"
+                  className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:border-border file:bg-background file:px-3 file:py-2 file:text-sm"
+                  onChange={(e) => setFaceFile(e.target.files?.[0] ?? null)}
+                />
+                <Button onClick={runFaceSearch} disabled={faceBusy || !faceFile} className="sm:whitespace-nowrap">
+                  {faceBusy ? "Analyse..." : "Filtrer mes photos"}
+                </Button>
+                {faceFilterIds && (
+                  <Button variant="outline" onClick={clearFaceFilter} className="sm:whitespace-nowrap">
+                    Voir tout
+                  </Button>
+                )}
+              </div>
+              {faceInfo && (
+                <p className="text-xs text-[var(--color-primary)]">
+                  Filtre actif : {faceInfo.matched} résultat(s) sur {faceInfo.indexed} photos indexées (seuil{" "}
+                  {Math.round(faceInfo.threshold * 100)}%).
+                </p>
+              )}
+              {faceError && <p className="text-xs text-destructive">{faceError}</p>}
+            </div>
+
             <div className="mt-6 bg-card rounded-[var(--radius-card)] border p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Télécharger</p>
@@ -394,7 +487,7 @@ export function GuestAlbumByCodesClient({
 
         {galleryMode && !split && init.isSuccess && (
           <>
-            {renderMasonry(mediasSingle)}
+            {renderMasonry(filteredMediasSingle)}
             <div ref={sentinelSingleRef} className="h-10" />
             {singleQ.isFetchingNextPage && (
               <p className="text-sm text-muted-foreground text-center mt-4">Chargement...</p>
@@ -409,7 +502,7 @@ export function GuestAlbumByCodesClient({
               <p className="text-xs text-muted-foreground mb-1">
                 Photos approuvées, tous albums publics — 20 par page ({init.data?.section_counts?.public ?? 0} au total)
               </p>
-              {renderMasonry(mediasPub)}
+              {renderMasonry(filteredMediasPub)}
               <div ref={sentinelPubRef} className="h-10" />
               {pubQ.isFetchingNextPage && (
                 <p className="text-sm text-muted-foreground text-center mt-4">Chargement (public)...</p>
@@ -422,7 +515,7 @@ export function GuestAlbumByCodesClient({
                 Photos approuvées de cet album uniquement — 20 par page ({init.data?.section_counts?.private ?? 0} au
                 total)
               </p>
-              {renderMasonry(mediasPriv)}
+              {renderMasonry(filteredMediasPriv)}
               <div ref={sentinelPrivRef} className="h-10" />
               {privQ.isFetchingNextPage && (
                 <p className="text-sm text-muted-foreground text-center mt-4">Chargement (privé)...</p>

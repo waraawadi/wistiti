@@ -109,6 +109,20 @@ class Media(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class MediaFaceEncoding(models.Model):
+    media = models.OneToOneField(Media, on_delete=models.CASCADE, related_name="face_encoding")
+    embedding = models.JSONField(default=list)
+    embedding_dim = models.PositiveSmallIntegerField(default=128)
+    quality_score = models.FloatField(default=0.0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["created_at"]),
+        ]
+
+
 class TextPost(models.Model):
     evenement = models.ForeignKey(Evenement, on_delete=models.CASCADE, related_name="text_posts")
     contenu = models.TextField()

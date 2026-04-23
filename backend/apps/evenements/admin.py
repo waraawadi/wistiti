@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Album, AlbumQRCode, Evenement, Media, QRCode, TextPost
+from .models import Album, AlbumQRCode, Evenement, Media, MediaFaceEncoding, QRCode, TextPost
 
 
 @admin.register(Evenement)
@@ -29,6 +29,14 @@ class MediaAdmin(admin.ModelAdmin):
     search_fields = ("evenement__titre", "album__nom", "legende", "uploaded_by_ip")
     readonly_fields = ("created_at",)
     autocomplete_fields = ("evenement", "album")
+
+
+@admin.register(MediaFaceEncoding)
+class MediaFaceEncodingAdmin(admin.ModelAdmin):
+    list_display = ("media", "embedding_dim", "quality_score", "updated_at")
+    search_fields = ("media__evenement__titre", "media__album__nom")
+    readonly_fields = ("created_at", "updated_at")
+    autocomplete_fields = ("media",)
 
 
 @admin.register(TextPost)
