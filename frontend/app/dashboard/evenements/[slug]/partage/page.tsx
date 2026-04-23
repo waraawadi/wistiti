@@ -40,7 +40,9 @@ type Album = {
   guest_upload_enabled?: boolean;
   medias_count?: number;
   qrcode_url: string;
+  qrcode_upload_url: string;
   entry_url: string;
+  upload_url: string;
 };
 
 export default function EvenementSharePage({ params }: { params: { slug: string } }) {
@@ -272,7 +274,7 @@ export default function EvenementSharePage({ params }: { params: { slug: string 
             </div>
           </div>
         </div>
-        <QRCodePhotoWallCard slug={slug} />
+        <QRCodePhotoWallCard slug={slug} eventCode={data?.public_code} />
 
         <div className="dashboard-panel p-6 md:p-8 space-y-5 lg:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -325,7 +327,8 @@ export default function EvenementSharePage({ params }: { params: { slug: string 
 
           <div className="grid md:grid-cols-2 gap-5">
             {sortedAlbums.map((a) => {
-              const qrSrc = a.qrcode_url.startsWith("http") ? a.qrcode_url : `${apiBase}${a.qrcode_url}`;
+              const qrGallerySrc = a.qrcode_url.startsWith("http") ? a.qrcode_url : `${apiBase}${a.qrcode_url}`;
+              const qrUploadSrc = a.qrcode_upload_url.startsWith("http") ? a.qrcode_upload_url : `${apiBase}${a.qrcode_upload_url}`;
               return (
                 <div
                   key={a.id}
@@ -394,12 +397,13 @@ export default function EvenementSharePage({ params }: { params: { slug: string 
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-start gap-4">
+                  <div className="flex flex-wrap items-start gap-5">
                     <div className="flex flex-col items-stretch gap-2 shrink-0">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">QR galerie</span>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={qrSrc}
-                        alt={`QR ${a.nom}`}
+                        src={qrGallerySrc}
+                        alt={`QR galerie ${a.nom}`}
                         className="h-28 w-28 rounded-2xl border border-border/50 bg-background shadow-sm ring-1 ring-border/30"
                       />
                       <Button
@@ -413,12 +417,37 @@ export default function EvenementSharePage({ params }: { params: { slug: string 
                         }}
                       >
                         <Download className="size-3.5" aria-hidden />
-                        {downloadingAlbumQrId === a.id ? "Téléchargement…" : "Télécharger le QR"}
+                        {downloadingAlbumQrId === a.id ? "Téléchargement…" : "Télécharger le QR galerie"}
+                      </Button>
+                    </div>
+                    <div className="flex flex-col items-stretch gap-2 shrink-0">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">QR upload</span>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={qrUploadSrc}
+                        alt={`QR upload ${a.nom}`}
+                        className="h-28 w-28 rounded-2xl border border-border/50 bg-background shadow-sm ring-1 ring-border/30"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 w-full sm:w-auto rounded-xl border border-[color-mix(in_srgb,var(--color-secondary)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-secondary)_9%,transparent)] px-3.5 text-xs font-semibold text-[var(--color-secondary)] shadow-sm transition-all hover:!bg-[color-mix(in_srgb,var(--color-secondary)_15%,transparent)] hover:shadow-md hover:!text-[var(--color-secondary)]"
+                        onClick={async () => {
+                          try {
+                            await downloadQrPngFromPath(a.qrcode_upload_url, `qr-upload-${slug}-${a.slug}.png`);
+                          } catch {
+                            setAlbumNotice({ variant: "error", text: "Impossible de télécharger le QR upload." });
+                          }
+                        }}
+                      >
+                        <Download className="size-3.5" aria-hidden />
+                        Télécharger le QR upload
                       </Button>
                     </div>
                     <div className="flex-1 min-w-[220px]">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Lien QR (API → redirection vers l’album)
+                        Lien galerie
                       </label>
                       <div className="mt-2 flex items-center gap-2">
                         <input
@@ -439,6 +468,28 @@ export default function EvenementSharePage({ params }: { params: { slug: string 
                           Copier
                         </Button>
                       </div>
+                      <label className="mt-3 block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Lien upload
+                      </label>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          className={cn(dashboardInput, "flex-1 min-w-0 font-mono text-xs h-10 py-0")}
+                          value={a.upload_url}
+                          readOnly
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-10 shrink-0 rounded-xl border border-[color-mix(in_srgb,var(--color-secondary)_32%,transparent)] bg-[color-mix(in_srgb,var(--color-secondary)_10%,transparent)] px-3.5 text-xs font-semibold text-[var(--color-secondary)] shadow-sm transition-all hover:!bg-[color-mix(in_srgb,var(--color-secondary)_18%,transparent)] hover:shadow-md hover:!text-[var(--color-secondary)]"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(a.upload_url);
+                          }}
+                        >
+                          <Copy className="size-3.5" aria-hidden />
+                          Copier
+                        </Button>
+                      </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <span className="text-xs text-muted-foreground">Page web directe</span>
                         <Button
@@ -450,6 +501,17 @@ export default function EvenementSharePage({ params }: { params: { slug: string 
                           disabled={!data?.public_code || !a.public_code}
                         >
                           /{data?.public_code}/{a.public_code}
+                          <ExternalLink className="ml-1 size-3 opacity-70" aria-hidden />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 rounded-lg border border-border/60 bg-background/80 px-2.5 text-[11px] font-mono font-medium text-foreground shadow-sm hover:bg-muted/60"
+                          onClick={() => window.open(`${origin}/${data?.public_code ?? ""}/${a.public_code}/upload`, "_blank")}
+                          disabled={!data?.public_code || !a.public_code}
+                        >
+                          /{data?.public_code}/{a.public_code}/upload
                           <ExternalLink className="ml-1 size-3 opacity-70" aria-hidden />
                         </Button>
                       </div>

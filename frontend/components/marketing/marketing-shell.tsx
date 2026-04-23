@@ -13,6 +13,7 @@ import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const NAV = [
+  { href: "/evenements", label: "Événements" },
   { href: "/fonctionnalites", label: "Fonctionnalités" },
   { href: "/comment-ca-marche", label: "Comment ça marche" },
   { href: "/pricing", label: "Tarifs" },

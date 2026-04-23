@@ -685,6 +685,30 @@ class InitierInviteTelechargementView(APIView):
         price = int(getattr(cfg, "guest_download_price_per_photo_xof", 25) or 25)
         amount = len(found) * price
 
+        # Politique de paiement du téléchargement invité pilotée globalement (AppConfig).
+        payment_required = bool(getattr(cfg, "guest_download_payment_required", True))
+
+        if not payment_required:
+            free_tx_id = f"FREE-{secrets.token_hex(10)}"
+            GuestDownloadPurchase.objects.create(
+                user_email=email,
+                media_ids=media_ids,
+                montant=0,
+                price_per_photo_xof=0,
+                statut="approved",
+                fedapay_transaction_id=free_tx_id,
+            )
+            return Response(
+                {
+                    "transaction_id": free_tx_id,
+                    "amount": 0,
+                    "count": len(found),
+                    "price_per_photo_xof": 0,
+                    "customer": {"email": email, "firstname": "Invite", "lastname": "PhotoEvent"},
+                    "checkout_mode": "free_download",
+                }
+            )
+
         callback_url = f"{settings.PUBLIC_FRONTEND_BASE_URL}/paiement/succes"
         merchant_reference = f"photoevent-guest-dl-{secrets.token_hex(8)}"
         payload = {
@@ -746,19 +770,22 @@ class InviteTelechargementZipView(APIView):
     def post(self, request):
         data = request.data if isinstance(request.data, dict) else {}
         tx_id_raw = str(data.get("transaction_id") or "").strip()
-        if not tx_id_raw.isdigit():
+        if not tx_id_raw:
             return Response({"detail": "transaction_id requis"}, status=status.HTTP_400_BAD_REQUEST)
-        tx_id_int = int(tx_id_raw)
 
-        purchase = GuestDownloadPurchase.objects.filter(fedapay_transaction_id=str(tx_id_int)).first()
+        purchase = GuestDownloadPurchase.objects.filter(fedapay_transaction_id=tx_id_raw).first()
         if not purchase:
             return Response({"detail": "Achat introuvable."}, status=status.HTTP_404_NOT_FOUND)
         if purchase.used_at is not None:
             return Response({"detail": "Ce paiement a déjà été utilisé."}, status=status.HTTP_409_CONFLICT)
 
-        tx_status, payment_ok = _fedapay_inspect_transaction(tx_id_int)
-        if not payment_ok:
-            return Response({"detail": "Paiement non confirmé.", "statut": tx_status}, status=status.HTTP_402_PAYMENT_REQUIRED)
+        # Cas gratuit : pas de transaction FedaPay, téléchargement direct autorisé.
+        if purchase.montant > 0:
+            if not tx_id_raw.isdigit():
+                return Response({"detail": "transaction_id invalide"}, status=status.HTTP_400_BAD_REQUEST)
+            tx_status, payment_ok = _fedapay_inspect_transaction(int(tx_id_raw))
+            if not payment_ok:
+                return Response({"detail": "Paiement non confirmé.", "statut": tx_status}, status=status.HTTP_402_PAYMENT_REQUIRED)
 
         from django.utils import timezone as dj_tz
         from apps.evenements.models import Media
@@ -768,7 +795,7 @@ class InviteTelechargementZipView(APIView):
         if not medias:
             return Response({"detail": "Aucun média."}, status=status.HTTP_400_BAD_REQUEST)
 
-        out_path = generate_selected_media_zip(slug=f"tx-{tx_id_int}", medias=medias)
+        out_path = generate_selected_media_zip(slug=f"tx-{tx_id_raw}", medias=medias)
         purchase.used_at = dj_tz.now()
         purchase.statut = "approved"
         purchase.save(update_fields=["used_at", "statut"])

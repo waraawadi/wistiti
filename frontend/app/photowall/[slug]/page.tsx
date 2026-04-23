@@ -18,6 +18,7 @@ type MediaItem = {
 type Evenement = {
   titre: string;
   slug: string;
+  public_code?: string;
   /** Image PNG — même ressource que GET /albums/public/qrcode/ */
   qrcode_url: string;
 };
@@ -29,14 +30,15 @@ function wsUrl(path: string) {
 }
 
 export default function PhotoWallPage({ params }: { params: { slug: string } }) {
-  const slug = params.slug;
+  const eventRef = params.slug;
   const [connected, setConnected] = useState(false);
   const [playlist, setPlaylist] = useState<MediaItem[]>([]);
   const [queue, setQueue] = useState<MediaItem[]>([]);
   const [current, setCurrent] = useState<MediaItem | null>(null);
-  const [fade, setFade] = useState(true);
+  const [mediaVisible, setMediaVisible] = useState(true);
   const [progress, setProgress] = useState(0);
   const [evt, setEvt] = useState<Evenement | null>(null);
+  const [wsChannelSlug, setWsChannelSlug] = useState<string>(eventRef);
 
   const wsRef = useRef<WebSocket | null>(null);
   const backoffRef = useRef(1000);
@@ -46,6 +48,25 @@ export default function PhotoWallPage({ params }: { params: { slug: string } }) 
 
   const slideMs = 5000;
   const playlistIdxRef = useRef<number>(0);
+  const cascadePool = useMemo(
+    () => playlist.filter((m) => m.type === "photo" && m.id !== current?.id).slice(0, 20),
+    [playlist, current?.id]
+  );
+
+  function normalizeIncomingMedia(raw: any): MediaItem | null {
+    if (!raw) return null;
+    const id = Number(raw.id);
+    const type = raw.type === "video" ? "video" : "photo";
+    const url = String(raw.url || raw.fichier || "");
+    if (!id || !url) return null;
+    return {
+      id,
+      type,
+      url,
+      legende: String(raw.legende || ""),
+      created_at: String(raw.created_at || new Date().toISOString()),
+    };
+  }
 
   useEffect(() => {
     (async () => {
@@ -60,15 +81,20 @@ export default function PhotoWallPage({ params }: { params: { slug: string } }) 
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await api.get<{ evenement: { titre: string; slug: string; qrcode_url: string }; medias: any[] }>(
-          `/api/evenements/${slug}/photowall/medias/`,
+        const { data } = await api.get<{
+          evenement: { titre: string; slug: string; public_code?: string; qrcode_url: string };
+          medias: any[];
+        }>(
+          `/api/evenements/${eventRef}/photowall/medias/`,
         );
         const ev = data.evenement;
         setEvt({
           titre: ev.titre,
           slug: ev.slug,
+          public_code: ev.public_code,
           qrcode_url: ev.qrcode_url,
         });
+        setWsChannelSlug(ev.slug || eventRef);
         const initial: MediaItem[] = (data.medias ?? []).map((m) => ({
           id: m.id,
           url: m.fichier,
@@ -81,14 +107,15 @@ export default function PhotoWallPage({ params }: { params: { slug: string } }) 
         setQueue([]);
         playlistIdxRef.current = 0;
       } catch {
-        setEvt({ titre: slug, slug, qrcode_url: "" });
+        setEvt({ titre: eventRef, slug: eventRef, qrcode_url: "" });
+        setWsChannelSlug(eventRef);
       }
     })();
-  }, [slug]);
+  }, [eventRef]);
 
   const connectWs = useMemo(() => {
     return () => {
-      const url = wsUrl(`/ws/photowall/${slug}/`);
+      const url = wsUrl(`/ws/photowall/${wsChannelSlug}/`);
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
@@ -109,14 +136,22 @@ export default function PhotoWallPage({ params }: { params: { slug: string } }) 
         try {
           const data = JSON.parse(msg.data);
           if (data?.type === "new_media" && data.media) {
-            setQueue((q) => [...q, data.media as MediaItem]);
+            const incoming = normalizeIncomingMedia(data.media);
+            if (!incoming) return;
+            // La nouvelle photo/vidéo doit être visible immédiatement.
+            setPlaylist((prev) => [incoming, ...prev.filter((m) => m.id !== incoming.id)]);
+            setQueue((q) => [incoming, ...q.filter((m) => m.id !== incoming.id)]);
+            setCurrent(incoming);
+            setMediaVisible(true);
+            slideStartRef.current = performance.now();
+            setProgress(0);
           }
         } catch {
           // ignore
         }
       };
     };
-  }, [slug]);
+  }, [wsChannelSlug]);
 
   useEffect(() => {
     connectWs();
@@ -161,9 +196,9 @@ export default function PhotoWallPage({ params }: { params: { slug: string } }) 
     rafRef.current = requestAnimationFrame(tick);
 
     timerRef.current = window.setTimeout(() => {
-      setFade(false);
+      setMediaVisible(false);
       window.setTimeout(() => {
-        setFade(true);
+        setMediaVisible(true);
         let next: MediaItem | null = null;
         if (queue.length > 0) {
           next = queue[0];
@@ -176,7 +211,7 @@ export default function PhotoWallPage({ params }: { params: { slug: string } }) 
         setCurrent(next);
         slideStartRef.current = performance.now();
         setProgress(0);
-      }, 2000); // fade 2s
+      }, 700); // transition plus douce et plus naturelle
     }, slideMs);
 
     return () => {
@@ -196,6 +231,24 @@ export default function PhotoWallPage({ params }: { params: { slug: string } }) 
 
   return (
     <div className="fixed inset-0" style={{ background: "#000000" }}>
+      <style jsx global>{`
+        @keyframes photowall-cascade-fall {
+          0% {
+            transform: translate3d(0, -20vh, 0) scale(0.92) rotate(-3deg);
+            opacity: 0;
+          }
+          10% {
+            opacity: 0.85;
+          }
+          85% {
+            opacity: 0.85;
+          }
+          100% {
+            transform: translate3d(0, 115vh, 0) scale(1.02) rotate(3deg);
+            opacity: 0;
+          }
+        }
+      `}</style>
       {/* header overlay */}
       <div
         className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-6 py-4"
@@ -205,19 +258,105 @@ export default function PhotoWallPage({ params }: { params: { slug: string } }) 
           <AppName />
         </div>
         <div className="text-sm md:text-base" style={{ color: "rgba(255,255,255,0.9)" }}>
-          {evt?.titre ?? slug}
+          {evt?.titre ?? eventRef}
         </div>
       </div>
 
       {/* slide */}
-      <div className="absolute inset-0 flex items-center justify-center">
+      <div className="absolute inset-0 flex items-center justify-center px-2 md:px-6">
+        {/* Cascades autour (en arrière-plan) */}
+        {cascadePool.length > 0 && (
+          <>
+            <div className="pointer-events-none absolute left-8 md:left-12 top-0 bottom-0 z-[12] w-40 md:w-48 overflow-hidden">
+              {cascadePool.map((m, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={`cascade-left-${m.id}-${i}`}
+                  src={m.url}
+                  alt=""
+                  className="absolute left-1 w-20 md:w-24 rounded-xl border border-white/20 object-cover shadow-xl"
+                  style={{
+                    top: "-18vh",
+                    left: `${(i % 3) * 34}px`,
+                    animationName: "photowall-cascade-fall",
+                    animationDuration: `${11 + (i % 4)}s`,
+                    animationTimingFunction: "linear",
+                    animationIterationCount: "infinite",
+                    animationDelay: `${i * 0.85}s`,
+                    zIndex: 5 + (i % 3),
+                  }}
+                />
+              ))}
+            </div>
+            <div className="pointer-events-none absolute right-8 md:right-12 top-0 bottom-0 z-[12] w-40 md:w-48 overflow-hidden">
+              {cascadePool.map((m, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={`cascade-right-${m.id}-${i}`}
+                  src={m.url}
+                  alt=""
+                  className="absolute right-1 w-20 md:w-24 rounded-xl border border-white/20 object-cover shadow-xl"
+                  style={{
+                    top: "-18vh",
+                    right: `${(i % 3) * 34}px`,
+                    animationName: "photowall-cascade-fall",
+                    animationDuration: `${12 + (i % 3)}s`,
+                    animationTimingFunction: "linear",
+                    animationIterationCount: "infinite",
+                    animationDelay: `${i * 0.9 + 0.45}s`,
+                    zIndex: 5 + (i % 3),
+                  }}
+                />
+              ))}
+            </div>
+            <div className="pointer-events-none absolute left-24 right-24 top-0 z-[10] h-20 md:h-24 overflow-hidden">
+              {cascadePool.slice(0, 10).map((m, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={`cascade-top-${m.id}-${i}`}
+                  src={m.url}
+                  alt=""
+                  className="absolute top-0 w-16 md:w-20 rounded-xl border border-white/20 object-cover shadow-lg"
+                  style={{
+                    left: `${(i * 11) % 90}%`,
+                    animationName: "photowall-cascade-fall",
+                    animationDuration: `${13 + (i % 4)}s`,
+                    animationTimingFunction: "linear",
+                    animationIterationCount: "infinite",
+                    animationDelay: `${i * 0.7}s`,
+                  }}
+                />
+              ))}
+            </div>
+            <div className="pointer-events-none absolute left-24 right-24 bottom-0 z-[10] h-20 md:h-24 overflow-hidden">
+              {cascadePool.slice(5, 15).map((m, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={`cascade-bottom-${m.id}-${i}`}
+                  src={m.url}
+                  alt=""
+                  className="absolute bottom-0 w-16 md:w-20 rounded-xl border border-white/20 object-cover shadow-lg"
+                  style={{
+                    left: `${(i * 12 + 8) % 90}%`,
+                    animationName: "photowall-cascade-fall",
+                    animationDuration: `${12 + (i % 3)}s`,
+                    animationTimingFunction: "linear",
+                    animationIterationCount: "infinite",
+                    animationDelay: `${i * 0.8 + 0.35}s`,
+                  }}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
         {current ? (
-          <div className="absolute inset-0">
+          <div className="relative z-30 inline-flex items-center justify-center overflow-hidden rounded-2xl border border-white/20 shadow-[0_30px_120px_-35px_rgba(0,0,0,0.75)] bg-black">
             {current.type === "video" ? (
               <video
                 key={current.id}
                 src={current.url}
-                className="h-full w-full object-contain"
+                className={`max-w-[88vw] max-h-[calc(100vh-9rem)] w-auto h-auto object-contain transition-opacity duration-700 ${mediaVisible ? "opacity-100" : "opacity-0"}`}
                 autoPlay
                 muted
                 loop
@@ -225,25 +364,31 @@ export default function PhotoWallPage({ params }: { params: { slug: string } }) 
               />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
-              <img key={current.id} src={current.url} alt="" className="h-full w-full object-contain" />
+              <img
+                key={current.id}
+                src={current.url}
+                alt=""
+                className={`max-w-[88vw] max-h-[calc(100vh-9rem)] w-auto h-auto object-contain transition-opacity duration-700 ${mediaVisible ? "opacity-100" : "opacity-0"}`}
+              />
             )}
-            <div
-              className="absolute inset-0 transition-opacity duration-[2000ms]"
-              style={{ opacity: fade ? 1 : 0 }}
-            />
 
             {/* bottom legend overlay */}
-            <div
-              className="absolute left-0 right-0 bottom-0 px-6 py-5"
-              style={{ background: "linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0))" }}
-            >
-              <p className="text-sm md:text-base" style={{ color: "rgba(255,255,255,0.95)" }}>
-                {current.legende || ""}
-              </p>
+            <div className="absolute left-0 right-0 bottom-10 px-6 py-5 flex justify-center">
+              {current.legende ? (
+                <div className="relative inline-flex max-w-[92%] items-center justify-center animate-in fade-in zoom-in-95 slide-in-from-bottom-3 duration-700">
+                  <span className="rounded-2xl border border-white/25 bg-black/45 px-4 py-2 text-sm md:text-base font-medium text-white/95 backdrop-blur-sm shadow-xl transition-transform duration-500 hover:scale-[1.02]">
+                    {current.legende}
+                  </span>
+                  <span className="absolute -top-2 -left-2 h-2.5 w-2.5 rounded-full bg-yellow-300 animate-ping [animation-duration:1200ms]" />
+                  <span className="absolute -top-1 -right-3 h-2 w-2 rounded-full bg-orange-400 animate-ping [animation-delay:150ms] [animation-duration:1350ms]" />
+                  <span className="absolute -bottom-2 -left-3 h-2.5 w-2.5 rounded-full bg-pink-400 animate-ping [animation-delay:300ms] [animation-duration:1400ms]" />
+                  <span className="absolute -bottom-1 -right-2 h-2 w-2 rounded-full bg-cyan-300 animate-ping [animation-delay:450ms] [animation-duration:1500ms]" />
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (
-          <div className="text-center">
+          <div className="relative z-30 text-center w-[min(88vw,1920px)] aspect-video max-h-[calc(100vh-9rem)] rounded-2xl border border-white/20 bg-black/80 flex flex-col items-center justify-center shadow-[0_30px_120px_-35px_rgba(0,0,0,0.75)]">
             <div className="text-4xl font-extrabold font-display" style={{ color: "var(--color-primary)" }}>
               <AppName />
             </div>
@@ -261,7 +406,7 @@ export default function PhotoWallPage({ params }: { params: { slug: string } }) 
       </div>
 
       {/* QR upload (bottom-left) */}
-      <div className="absolute bottom-4 left-4 z-20">
+      <div className="absolute bottom-4 left-4 z-30">
         <div
           className="rounded-[var(--radius-card)] border overflow-hidden shadow-glow"
           style={{

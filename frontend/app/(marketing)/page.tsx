@@ -70,6 +70,11 @@ export default function MarketingHomePage() {
                 invités s’occupent du reste — depuis leur téléphone, sans appli.
               </p>
               <div className="mt-9 flex flex-col sm:flex-row flex-wrap gap-3 justify-center md:justify-start">
+                <Link href="/evenements">
+                  <Button variant="secondary" size="lg" className="w-full sm:w-auto gap-1 rounded-xl h-12 px-8">
+                    Voir les événements publics <ChevronRight className="size-4" />
+                  </Button>
+                </Link>
                 <Link href="/dashboard/evenements">
                   <Button variant="gradient" size="lg" className="w-full sm:w-auto gap-1 rounded-xl h-12 px-8 shadow-glow">
                     Lancer mon premier événement <ChevronRight className="size-4" />

@@ -12,6 +12,7 @@ class AppConfig(models.Model):
     favicon_url = models.URLField(blank=True, default="")
     topup_price_per_photo_xof = models.PositiveIntegerField(default=25)
     guest_download_price_per_photo_xof = models.PositiveIntegerField(default=25)
+    guest_download_payment_required = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

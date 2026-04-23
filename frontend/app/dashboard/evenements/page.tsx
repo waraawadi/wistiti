@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 
 import { DashboardPageHeader } from "@/components/dashboard-page-header";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { dashboardInput, dashboardTextarea, dashboardTitleInput } from "@/lib/dashboard-ui";
@@ -16,9 +17,15 @@ type Evenement = {
   titre: string;
   slug: string;
   date: string;
+  expires_at: string | null;
   actif: boolean;
   description?: string;
 };
+
+function toDateTimeLocalValue(value?: string | null) {
+  if (!value) return "";
+  return new Date(value).toISOString().slice(0, 16);
+}
 
 export default function EvenementsListPage() {
   const qc = useQueryClient();
@@ -29,7 +36,8 @@ export default function EvenementsListPage() {
   const [current, setCurrent] = useState<Evenement | null>(null);
 
   const [titre, setTitre] = useState("");
-  const [date, setDate] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [description, setDescription] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -43,7 +51,18 @@ export default function EvenementsListPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const { data: created } = await api.post<{ slug: string }>("/api/evenements/", { titre, date, description });
+      if (!startDate || !endDate) {
+        throw new Error("MISSING_DATES");
+      }
+      if (new Date(endDate) <= new Date(startDate)) {
+        throw new Error("INVALID_RANGE");
+      }
+      const { data: created } = await api.post<{ slug: string }>("/api/evenements/", {
+        titre,
+        date: startDate,
+        expires_at: endDate,
+        description,
+      });
       return created;
     },
     onSuccess: async () => {
@@ -52,17 +71,40 @@ export default function EvenementsListPage() {
       await qc.invalidateQueries({ queryKey: ["paiements-usage"] });
       setCreateOpen(false);
       setTitre("");
-      setDate("");
+      setStartDate("");
+      setEndDate("");
       setDescription("");
       setFormError(null);
     },
-    onError: () => setFormError("Impossible de créer l’événement."),
+    onError: (error) => {
+      if (error instanceof Error && error.message === "MISSING_DATES") {
+        setFormError("Veuillez renseigner la date/heure de début et de fin.");
+        return;
+      }
+      if (error instanceof Error && error.message === "INVALID_RANGE") {
+        setFormError("La date/heure de fin doit être après la date/heure de début.");
+        return;
+      }
+      setFormError("Impossible de créer l’événement.");
+    },
   });
 
   const editMutation = useMutation({
     mutationFn: async () => {
       if (!current) throw new Error("no current");
-      await api.put(`/api/evenements/${current.slug}/`, { titre, date, description, actif: current.actif });
+      if (!startDate || !endDate) {
+        throw new Error("MISSING_DATES");
+      }
+      if (new Date(endDate) <= new Date(startDate)) {
+        throw new Error("INVALID_RANGE");
+      }
+      await api.put(`/api/evenements/${current.slug}/`, {
+        titre,
+        date: startDate,
+        expires_at: endDate,
+        description,
+        actif: current.actif,
+      });
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["evenements"] });
@@ -72,7 +114,17 @@ export default function EvenementsListPage() {
       setCurrent(null);
       setFormError(null);
     },
-    onError: () => setFormError("Impossible de modifier l’événement."),
+    onError: (error) => {
+      if (error instanceof Error && error.message === "MISSING_DATES") {
+        setFormError("Veuillez renseigner la date/heure de début et de fin.");
+        return;
+      }
+      if (error instanceof Error && error.message === "INVALID_RANGE") {
+        setFormError("La date/heure de fin doit être après la date/heure de début.");
+        return;
+      }
+      setFormError("Impossible de modifier l’événement.");
+    },
   });
 
   const deleteMutation = useMutation({
@@ -92,7 +144,8 @@ export default function EvenementsListPage() {
   function openCreate() {
     setFormError(null);
     setTitre("");
-    setDate("");
+    setStartDate("");
+    setEndDate("");
     setDescription("");
     setCreateOpen(true);
   }
@@ -103,7 +156,8 @@ export default function EvenementsListPage() {
     setCurrent(ev);
     setFormError(null);
     setTitre(ev.titre ?? "");
-    setDate(ev.date ? new Date(ev.date).toISOString().slice(0, 16) : "");
+    setStartDate(toDateTimeLocalValue(ev.date));
+    setEndDate(toDateTimeLocalValue(ev.expires_at));
     setDescription((ev as any).description ?? "");
     setEditOpen(true);
   }
@@ -133,7 +187,7 @@ export default function EvenementsListPage() {
             <thead>
               <tr className="border-b border-border/50 bg-muted/40">
                 <th className="text-left text-xs font-bold uppercase tracking-wider text-muted-foreground px-5 py-4">Événement</th>
-                <th className="text-left text-xs font-bold uppercase tracking-wider text-muted-foreground px-5 py-4">Date</th>
+                <th className="text-left text-xs font-bold uppercase tracking-wider text-muted-foreground px-5 py-4">Période</th>
                 <th className="text-left text-xs font-bold uppercase tracking-wider text-muted-foreground px-5 py-4">Statut</th>
                 <th className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground px-5 py-4">Actions</th>
               </tr>
@@ -144,6 +198,7 @@ export default function EvenementsListPage() {
                   <td className="px-5 py-3.5 text-sm font-semibold">{ev.titre}</td>
                   <td className="px-5 py-3.5 text-sm text-muted-foreground">
                     {new Date(ev.date).toLocaleString("fr-FR")}
+                    {ev.expires_at ? ` → ${new Date(ev.expires_at).toLocaleString("fr-FR")}` : ""}
                   </td>
                   <td className="px-5 py-3.5">
                     <span
@@ -240,13 +295,21 @@ export default function EvenementsListPage() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Date</label>
-            <input
-              type="datetime-local"
-              className={`${dashboardInput} mt-2`}
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              required
+            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Date et heure de début</label>
+            <DateTimePicker
+              className="mt-2"
+              value={startDate}
+              onChange={setStartDate}
+              placeholder="Sélectionner le début"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Date et heure de fin</label>
+            <DateTimePicker
+              className="mt-2"
+              value={endDate}
+              onChange={setEndDate}
+              placeholder="Sélectionner la fin"
             />
           </div>
           <div>
@@ -290,13 +353,21 @@ export default function EvenementsListPage() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Date</label>
-            <input
-              type="datetime-local"
-              className={`${dashboardInput} mt-2`}
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              required
+            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Date et heure de début</label>
+            <DateTimePicker
+              className="mt-2"
+              value={startDate}
+              onChange={setStartDate}
+              placeholder="Sélectionner le début"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Date et heure de fin</label>
+            <DateTimePicker
+              className="mt-2"
+              value={endDate}
+              onChange={setEndDate}
+              placeholder="Sélectionner la fin"
             />
           </div>
           <div>

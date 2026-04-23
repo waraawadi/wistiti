@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: photoevent
       POSTGRES_DB: photoevent
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata_dev:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U photoevent -d photoevent"]
       interval: 5s
@@ -76,6 +76,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       pull: false
+    entrypoint: []
     command: ["celery", "-A", "config", "worker", "-l", "INFO"]
     volumes:
       - ./backend:/app
@@ -145,7 +146,7 @@ services:
       - nginx
 
 volumes:
-  pgdata:
+  pgdata_dev:
   media_volume:
   static_volume:
   frontend_node_modules:

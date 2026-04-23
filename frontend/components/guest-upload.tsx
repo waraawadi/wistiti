@@ -3,7 +3,7 @@
 import axios from "axios";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { Camera, Mail, Upload, User } from "lucide-react";
+import { Camera, CheckCircle2, Mail, Upload, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -41,6 +41,8 @@ export function GuestUpload({
   const [progress, setProgress] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [comment, setComment] = useState("");
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false);
   const [quotaInfo, setQuotaInfo] = useState<GuestQuotaFullInfo | null>(null);
 
@@ -48,6 +50,7 @@ export function GuestUpload({
     async (acceptedFiles: File[]) => {
       if (acceptedFiles.length === 0) return;
       setError(null);
+      setSuccess(null);
       const url =
         eventCode && albumCode
           ? `/api/evenements/by-code/${encodeURIComponent(eventCode)}/${encodeURIComponent(albumCode)}/medias/`
@@ -64,6 +67,9 @@ export function GuestUpload({
           const f = acceptedFiles[i];
           const form = new FormData();
           form.append("fichier", f);
+          if (comment.trim()) {
+            form.append("legende", comment.trim());
+          }
           await api.post(url, form, {
             headers: { "Content-Type": "multipart/form-data" },
             onUploadProgress: (evt) => {
@@ -73,6 +79,12 @@ export function GuestUpload({
             },
           });
         }
+        setSuccess(
+          acceptedFiles.length > 1
+            ? `${acceptedFiles.length} fichiers ont bien été uploadés.`
+            : "Le fichier a bien été uploadé.",
+        );
+        setComment("");
         onUploaded?.();
       } catch (err: unknown) {
         if (axios.isAxiosError(err)) {
@@ -107,11 +119,13 @@ export function GuestUpload({
         setProgress(0);
       }
     },
-    [slug, albumSlug, eventCode, albumCode, onUploaded]
+    [slug, albumSlug, eventCode, albumCode, onUploaded, comment]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    multiple: false,
+    maxFiles: 1,
     accept: {
       "image/*": [],
       "video/*": [],
@@ -138,6 +152,19 @@ export function GuestUpload({
 
   return (
     <div className="space-y-3">
+      <div>
+        <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Commentaire (optionnel)</label>
+        <textarea
+          className="mt-2 w-full rounded-[var(--radius-input)] border border-border bg-background px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+          rows={3}
+          maxLength={255}
+          placeholder="Ajoutez un petit message avec votre photo..."
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          disabled={loading}
+        />
+      </div>
+
       <div
         {...getRootProps()}
         className={`border-2 border-dashed rounded-[var(--radius-card)] p-10 text-center transition-colors cursor-pointer group bg-card hover:border-primary ${borderClass}`}
@@ -147,9 +174,9 @@ export function GuestUpload({
           <Upload className="text-primary" size={28} />
         </div>
         <p className="mt-4 font-medium font-display">Glissez vos photos ici</p>
-        <p className="text-sm text-muted-foreground mt-1">ou cliquez pour sélectionner — photos & vidéos acceptées</p>
+        <p className="text-sm text-muted-foreground mt-1">ou cliquez pour sélectionner un fichier — photo ou vidéo</p>
         <Button className="mt-4" size="sm" type="button" disabled={loading}>
-          <Camera size={16} className="mr-1" /> Sélectionner des fichiers
+          <Camera size={16} className="mr-1" /> Sélectionner un fichier
         </Button>
 
         {loading && (
@@ -160,6 +187,12 @@ export function GuestUpload({
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {success && (
+        <p className="text-sm rounded-xl border px-3 py-2 font-medium flex items-center gap-2 bg-[var(--color-primary-light)] border-[var(--color-primary)] text-[var(--color-primary)]">
+          <CheckCircle2 size={16} />
+          {success}
+        </p>
+      )}
 
       {quotaInfo?.code === "GUEST_QUOTA_FULL" && (
         <p className="text-sm text-muted-foreground">

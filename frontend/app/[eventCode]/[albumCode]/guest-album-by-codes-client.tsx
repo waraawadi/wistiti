@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, MessageSquarePlus } from "lucide-react";
+import { Check } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { GuestUpload } from "@/components/guest-upload";
@@ -55,7 +56,15 @@ function nextPageFromLink(next: string | null): number | undefined {
   }
 }
 
-export function GuestAlbumByCodesClient({ eventCode, albumCode }: { eventCode: string; albumCode: string }) {
+export function GuestAlbumByCodesClient({
+  eventCode,
+  albumCode,
+  mode = "gallery",
+}: {
+  eventCode: string;
+  albumCode: string;
+  mode?: "gallery" | "upload";
+}) {
   const qc = useQueryClient();
   const sentinelSingleRef = useRef<HTMLDivElement | null>(null);
   const sentinelPubRef = useRef<HTMLDivElement | null>(null);
@@ -76,6 +85,7 @@ export function GuestAlbumByCodesClient({ eventCode, albumCode }: { eventCode: s
     customer: { email: string; firstname: string; lastname: string };
   } | null>(null);
   const [preview, setPreview] = useState<MediaItem | null>(null);
+  const galleryMode = mode === "gallery";
 
   const basePath = `/api/evenements/by-code/${eventCode}/${albumCode}/album/`;
 
@@ -88,7 +98,7 @@ export function GuestAlbumByCodesClient({ eventCode, albumCode }: { eventCode: s
 
   const singleQ = useInfiniteQuery({
     queryKey: ["album", "codes", eventCode, albumCode, "single"],
-    enabled: init.isSuccess && !split,
+    enabled: init.isSuccess && !split && galleryMode,
     initialPageParam: 1,
     queryFn: async ({ pageParam }) => (await api.get<AlbumResponse>(`${basePath}?page=${pageParam}`)).data,
     getNextPageParam: (lastPage) => nextPageFromLink(lastPage.pagination?.next ?? null),
@@ -96,7 +106,7 @@ export function GuestAlbumByCodesClient({ eventCode, albumCode }: { eventCode: s
 
   const pubQ = useInfiniteQuery({
     queryKey: ["album", "codes", eventCode, albumCode, "section", "public"],
-    enabled: init.isSuccess && split,
+    enabled: init.isSuccess && split && galleryMode,
     initialPageParam: 1,
     queryFn: async ({ pageParam }) =>
       (await api.get<AlbumResponse>(`${basePath}?page=${pageParam}&section=public`)).data,
@@ -105,7 +115,7 @@ export function GuestAlbumByCodesClient({ eventCode, albumCode }: { eventCode: s
 
   const privQ = useInfiniteQuery({
     queryKey: ["album", "codes", eventCode, albumCode, "section", "private"],
-    enabled: init.isSuccess && split,
+    enabled: init.isSuccess && split && galleryMode,
     initialPageParam: 1,
     queryFn: async ({ pageParam }) =>
       (await api.get<AlbumResponse>(`${basePath}?page=${pageParam}&section=private`)).data,
@@ -194,8 +204,12 @@ export function GuestAlbumByCodesClient({ eventCode, albumCode }: { eventCode: s
         count: number;
         price_per_photo_xof: number;
         customer: { email: string; firstname: string; lastname: string };
-        checkout_mode: "checkout_js";
+        checkout_mode: "checkout_js" | "free_download";
       }>("/api/paiements/invite/initier-telechargement/", { media_ids: selectedIds, email: guestEmail.trim() });
+      if (data.checkout_mode === "free_download") {
+        await downloadZipAfterPayment(data.transaction_id);
+        return;
+      }
       setPaySession({
         transactionId: data.transaction_id,
         amount: data.amount,
@@ -323,51 +337,62 @@ export function GuestAlbumByCodesClient({ eventCode, albumCode }: { eventCode: s
         <p className="text-white/60 text-sm mt-1">
           {init.isLoading ? "Chargement…" : totalLabel ?? "—"}
         </p>
+        <p className="text-white/85 text-sm mt-3">
+          {galleryMode ? "Mode album : consultation des photos uniquement." : "Mode upload : envoi de photos dans l’album public."}
+        </p>
       </div>
 
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <GuestUpload
-          eventCode={eventCode}
-          albumCode={albumCode}
-          uploadEnabled={headerData?.evenement.album?.guest_upload_enabled !== false}
-          onUploaded={() => {
-            invalidateAlbum();
-          }}
-        />
+        {!galleryMode && (
+          <GuestUpload
+            eventCode={eventCode}
+            albumCode={albumCode}
+            uploadEnabled={headerData?.evenement.album?.guest_upload_enabled !== false}
+            onUploaded={() => {
+              invalidateAlbum();
+            }}
+          />
+        )}
 
-        <div className="flex justify-center mt-4">
-          <Button variant="secondary" size="sm" type="button">
-            <MessageSquarePlus size={16} className="mr-1" /> Ajouter une légende
-          </Button>
-        </div>
-
-        <div className="mt-6 bg-card rounded-[var(--radius-card)] border p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-medium">Télécharger</p>
-            <p className="text-xs text-muted-foreground">
-              Coche le cercle sur chaque image pour l’ajouter au panier, ou clique sur la photo pour l’afficher en grand.
-              Chaque téléchargement est payant.
+        {!galleryMode && (
+          <div className="mt-6 bg-card rounded-[var(--radius-card)] border p-4">
+            <p className="text-sm text-muted-foreground">
+              Partagez ce lien avec vos invités pour qu&apos;ils puissent uploader sur l&apos;album public de cet événement.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              className="h-10 px-3 rounded-[var(--radius-input)] border bg-background text-sm"
-              placeholder="Email (optionnel)"
-              value={guestEmail}
-              onChange={(e) => setGuestEmail(e.target.value)}
-            />
-            <Button onClick={startGuestPayment} disabled={selectedIds.length === 0}>
-              Payer & Télécharger ({selectedIds.length})
-            </Button>
-          </div>
-        </div>
-        {payError && <p className="mt-2 text-sm text-destructive">{payError}</p>}
+        )}
+
+        {galleryMode && (
+          <>
+            <div className="mt-6 bg-card rounded-[var(--radius-card)] border p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Télécharger</p>
+                <p className="text-xs text-muted-foreground">
+                  Coche le cercle sur chaque image pour l’ajouter au panier, ou clique sur la photo pour l’afficher en grand.
+                  Selon le plan de l’organisateur, le téléchargement peut être payant ou direct.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  className="h-10 px-3 rounded-[var(--radius-input)] border bg-background text-sm"
+                  placeholder="Email (optionnel)"
+                  value={guestEmail}
+                  onChange={(e) => setGuestEmail(e.target.value)}
+                />
+                <Button onClick={startGuestPayment} disabled={selectedIds.length === 0}>
+                  Télécharger ({selectedIds.length})
+                </Button>
+              </div>
+            </div>
+            {payError && <p className="mt-2 text-sm text-destructive">{payError}</p>}
+          </>
+        )}
 
         {init.isError && (
           <p className="mt-6 text-sm text-destructive">Impossible de charger l’album.</p>
         )}
 
-        {!split && init.isSuccess && (
+        {galleryMode && !split && init.isSuccess && (
           <>
             {renderMasonry(mediasSingle)}
             <div ref={sentinelSingleRef} className="h-10" />
@@ -377,7 +402,7 @@ export function GuestAlbumByCodesClient({ eventCode, albumCode }: { eventCode: s
           </>
         )}
 
-        {split && init.isSuccess && (
+        {galleryMode && split && init.isSuccess && (
           <>
             <section className="mt-10 rounded-[var(--radius-card)] border bg-card/50 p-4">
               <h2 className="text-lg font-semibold">Album public (événement)</h2>
@@ -407,68 +432,72 @@ export function GuestAlbumByCodesClient({ eventCode, albumCode }: { eventCode: s
         )}
       </div>
 
-      <Dialog
-        open={preview !== null}
-        onOpenChange={(open) => {
-          if (!open) setPreview(null);
-        }}
-        title={preview?.legende?.trim() || (preview?.type === "photo" ? "Photo" : "Vidéo")}
-        size="xl"
-        presentation="media"
-      >
-        {preview &&
-          (preview.type === "photo" ? (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element -- URL absolue / média dynamique */}
-              <img
-                src={preview.fichier}
-                alt={preview.legende || "Aperçu"}
-                className="max-h-[min(85dvh,calc(100dvh-7rem))] max-w-full w-auto h-auto object-contain rounded-xl shadow-2xl ring-1 ring-white/10"
-              />
-            </>
-          ) : (
-            <video
-              src={preview.fichier}
-              controls
-              className="max-h-[min(85dvh,calc(100dvh-7rem))] max-w-full rounded-xl shadow-2xl ring-1 ring-white/10"
-              playsInline
-            />
-          ))}
-      </Dialog>
+      {galleryMode && (
+        <>
+          <Dialog
+            open={preview !== null}
+            onOpenChange={(open) => {
+              if (!open) setPreview(null);
+            }}
+            title={preview?.legende?.trim() || (preview?.type === "photo" ? "Photo" : "Vidéo")}
+            size="xl"
+            presentation="media"
+          >
+            {preview &&
+              (preview.type === "photo" ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- URL absolue / média dynamique */}
+                  <img
+                    src={preview.fichier}
+                    alt={preview.legende || "Aperçu"}
+                    className="max-h-[min(85dvh,calc(100dvh-7rem))] max-w-full w-auto h-auto object-contain rounded-xl shadow-2xl ring-1 ring-white/10"
+                  />
+                </>
+              ) : (
+                <video
+                  src={preview.fichier}
+                  controls
+                  className="max-h-[min(85dvh,calc(100dvh-7rem))] max-w-full rounded-xl shadow-2xl ring-1 ring-white/10"
+                  playsInline
+                />
+              ))}
+          </Dialog>
 
-      <Dialog
-        open={payOpen}
-        onOpenChange={(v) => {
-          setPayOpen(v);
-          if (!v) setPaySession(null);
-        }}
-        title="Paiement — téléchargement"
-        size="xl"
-      >
-        {!paySession ? (
-          <p className="text-sm text-muted-foreground">Préparation…</p>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              {paySession.count} photo(s) — {paySession.price_per_photo_xof} XOF / photo — total{" "}
-              <span className="font-medium text-foreground">{paySession.amount} XOF</span>
-            </p>
-            {payError && <p className="text-sm text-destructive">{payError}</p>}
-            <FedaCheckoutEmbed
-              key={paySession.transactionId}
-              transactionId={paySession.transactionId}
-              customer={paySession.customer}
-              planNom={`Téléchargement (${paySession.count})`}
-              amount={paySession.amount}
-              onCheckoutCompleted={(txId) => {
-                void downloadZipAfterPayment(txId);
-              }}
-              onCheckoutDismissed={() => {}}
-              onError={(m) => setPayError(m)}
-            />
-          </div>
-        )}
-      </Dialog>
+          <Dialog
+            open={payOpen}
+            onOpenChange={(v) => {
+              setPayOpen(v);
+              if (!v) setPaySession(null);
+            }}
+            title="Paiement — téléchargement"
+            size="xl"
+          >
+            {!paySession ? (
+              <p className="text-sm text-muted-foreground">Préparation…</p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {paySession.count} photo(s) — {paySession.price_per_photo_xof} XOF / photo — total{" "}
+                  <span className="font-medium text-foreground">{paySession.amount} XOF</span>
+                </p>
+                {payError && <p className="text-sm text-destructive">{payError}</p>}
+                <FedaCheckoutEmbed
+                  key={paySession.transactionId}
+                  transactionId={paySession.transactionId}
+                  customer={paySession.customer}
+                  planNom={`Téléchargement (${paySession.count})`}
+                  amount={paySession.amount}
+                  onCheckoutCompleted={(txId) => {
+                    void downloadZipAfterPayment(txId);
+                  }}
+                  onCheckoutDismissed={() => {}}
+                  onError={(m) => setPayError(m)}
+                />
+              </div>
+            )}
+          </Dialog>
+        </>
+      )}
     </div>
   );
 }

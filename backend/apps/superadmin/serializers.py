@@ -35,7 +35,11 @@ class AdminPlanSerializer(serializers.ModelSerializer):
 class AdminBillingPricesSerializer(serializers.ModelSerializer):
     class Meta:
         model = AppConfig
-        fields = ("topup_price_per_photo_xof", "guest_download_price_per_photo_xof")
+        fields = (
+            "topup_price_per_photo_xof",
+            "guest_download_price_per_photo_xof",
+            "guest_download_payment_required",
+        )
 
     def validate_topup_price_per_photo_xof(self, value: int) -> int:
         if value < 1:

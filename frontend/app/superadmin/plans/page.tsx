@@ -27,6 +27,7 @@ type Plan = {
 type BillingPrices = {
   topup_price_per_photo_xof: number;
   guest_download_price_per_photo_xof: number;
+  guest_download_payment_required: boolean;
 };
 
 const th = "text-left text-xs font-bold uppercase tracking-wider text-muted-foreground px-5 py-4";
@@ -72,11 +73,13 @@ export default function AdminPlansPage() {
   const [isBillingEdit, setIsBillingEdit] = useState(false);
   const [topupPrice, setTopupPrice] = useState(25);
   const [guestDownloadPrice, setGuestDownloadPrice] = useState(25);
+  const [guestDownloadPaymentRequired, setGuestDownloadPaymentRequired] = useState(true);
 
   useEffect(() => {
     if (!billingPrices || isBillingEdit) return;
     setTopupPrice(billingPrices.topup_price_per_photo_xof);
     setGuestDownloadPrice(billingPrices.guest_download_price_per_photo_xof);
+    setGuestDownloadPaymentRequired(billingPrices.guest_download_payment_required);
   }, [billingPrices, isBillingEdit]);
 
   const [open, setOpen] = useState(false);
@@ -168,6 +171,7 @@ export default function AdminPlansPage() {
       await api.patch("/api/admin/billing-prices/", {
         topup_price_per_photo_xof: topupPrice,
         guest_download_price_per_photo_xof: guestDownloadPrice,
+        guest_download_payment_required: guestDownloadPaymentRequired,
       });
     },
     onSuccess: async () => {
@@ -210,6 +214,7 @@ export default function AdminPlansPage() {
                   if (billingPrices) {
                     setTopupPrice(billingPrices.topup_price_per_photo_xof);
                     setGuestDownloadPrice(billingPrices.guest_download_price_per_photo_xof);
+                    setGuestDownloadPaymentRequired(billingPrices.guest_download_payment_required);
                   }
                 }}
                 disabled={saveBillingPrices.isPending}
@@ -229,7 +234,7 @@ export default function AdminPlansPage() {
         </div>
 
         {!isBillingEdit ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Recharge abonné</p>
               <p className="mt-2 text-lg font-semibold tabular-nums">
@@ -242,6 +247,12 @@ export default function AdminPlansPage() {
               <p className="mt-2 text-lg font-semibold tabular-nums">
                 {billingPrices?.guest_download_price_per_photo_xof ?? guestDownloadPrice} XOF
                 <span className="ml-1 text-sm font-normal text-muted-foreground">/ photo</span>
+              </p>
+            </div>
+            <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Paiement invité</p>
+              <p className="mt-2 text-lg font-semibold tabular-nums">
+                {(billingPrices?.guest_download_payment_required ?? guestDownloadPaymentRequired) ? "Activé" : "Désactivé"}
               </p>
             </div>
           </div>
@@ -265,6 +276,14 @@ export default function AdminPlansPage() {
                 className={cn(dashboardInput, "mt-2")}
                 value={guestDownloadPrice}
                 onChange={(e) => setGuestDownloadPrice(Number(e.target.value))}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <ToggleRow
+                title="Paiement invité requis"
+                hint="Si désactivé, les invités téléchargent directement sans passer au checkout."
+                on={guestDownloadPaymentRequired}
+                onToggle={() => setGuestDownloadPaymentRequired((v) => !v)}
               />
             </div>
           </div>

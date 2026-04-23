@@ -4,6 +4,18 @@ from .models import Album, AlbumQRCode, Evenement, Media, QRCode
 
 
 class EvenementSerializer(serializers.ModelSerializer):
+    def validate(self, attrs):
+        start = attrs.get("date", getattr(self.instance, "date", None))
+        end = attrs.get("expires_at", getattr(self.instance, "expires_at", None))
+
+        if self.instance is None and not end:
+            raise serializers.ValidationError({"expires_at": "La date/heure de fin est requise."})
+
+        if start and end and end <= start:
+            raise serializers.ValidationError({"expires_at": "La fin doit être postérieure au début."})
+
+        return attrs
+
     class Meta:
         model = Evenement
         fields = (
@@ -44,7 +56,9 @@ class QRCodeSerializer(serializers.ModelSerializer):
 
 class AlbumSerializer(serializers.ModelSerializer):
     qrcode_url = serializers.SerializerMethodField()
+    qrcode_upload_url = serializers.SerializerMethodField()
     entry_url = serializers.SerializerMethodField()
+    upload_url = serializers.SerializerMethodField()
     medias_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -59,9 +73,21 @@ class AlbumSerializer(serializers.ModelSerializer):
             "created_at",
             "medias_count",
             "qrcode_url",
+            "qrcode_upload_url",
             "entry_url",
+            "upload_url",
         )
-        read_only_fields = ("id", "slug", "public_code", "created_at", "medias_count", "qrcode_url", "entry_url")
+        read_only_fields = (
+            "id",
+            "slug",
+            "public_code",
+            "created_at",
+            "medias_count",
+            "qrcode_url",
+            "qrcode_upload_url",
+            "entry_url",
+            "upload_url",
+        )
 
     def get_medias_count(self, obj: Album) -> int:
         c = getattr(obj, "medias_count", None)
@@ -72,8 +98,14 @@ class AlbumSerializer(serializers.ModelSerializer):
     def get_qrcode_url(self, obj: Album) -> str:
         return f"/api/evenements/by-code/{obj.evenement.public_code}/{obj.public_code}/qrcode/"
 
+    def get_qrcode_upload_url(self, obj: Album) -> str:
+        return f"/api/evenements/by-code/{obj.evenement.public_code}/{obj.public_code}/qrcode-upload/"
+
     def get_entry_url(self, obj: Album) -> str:
         return obj.public_url
+
+    def get_upload_url(self, obj: Album) -> str:
+        return obj.upload_url
 
 
 class AlbumQRCodeSerializer(serializers.ModelSerializer):

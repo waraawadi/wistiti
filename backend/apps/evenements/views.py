@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from datetime import time as dt_time
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
@@ -28,7 +28,7 @@ from .serializers import (
     MediaSerializer,
     PublicAlbumMediaSerializer,
 )
-from .services import build_photowall_qr_bytes, make_qr_content_file
+from .services import build_photowall_qr_bytes, build_qr_png_bytes, make_qr_content_file
 from .tasks import notify_organizer_guest_quota_blocked, process_photo
 from .zip_tasks import generate_event_zip
 
@@ -339,6 +339,11 @@ def _album_qr_png_response(album: Album):
     return FileResponse(qr.image_path.open("rb"), content_type="image/png")
 
 
+def _album_upload_qr_png_response(album: Album):
+    png = build_qr_png_bytes(album.upload_url, fill_color="#111111")
+    return HttpResponse(png, content_type="image/png")
+
+
 class AlbumQRCodeView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -346,6 +351,15 @@ class AlbumQRCodeView(APIView):
         evt = get_object_or_404(Evenement, slug=slug)
         album = get_object_or_404(Album, evenement=evt, slug=album_slug)
         return _album_qr_png_response(album)
+
+
+class AlbumUploadQRCodeView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, slug: str, album_slug: str):
+        evt = get_object_or_404(Evenement, slug=slug)
+        album = get_object_or_404(Album, evenement=evt, slug=album_slug)
+        return _album_upload_qr_png_response(album)
 
 
 class AlbumQRCodeByCodesView(APIView):
@@ -359,6 +373,19 @@ class AlbumQRCodeByCodesView(APIView):
         evt = get_object_or_404(Evenement, public_code=ec)
         album = get_object_or_404(Album, evenement=evt, public_code=ac)
         return _album_qr_png_response(album)
+
+
+class AlbumUploadQRCodeByCodesView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, event_code: str, album_code: str):
+        ec = normalize_public_code(event_code)
+        ac = normalize_public_code(album_code)
+        if not is_valid_public_code(ec) or not is_valid_public_code(ac):
+            raise Http404
+        evt = get_object_or_404(Evenement, public_code=ec)
+        album = get_object_or_404(Album, evenement=evt, public_code=ac)
+        return _album_upload_qr_png_response(album)
 
 
 @method_decorator(ratelimit(key="ip", rate="10/m", method="POST", block=True), name="dispatch")
@@ -461,9 +488,8 @@ def _post_guest_media(request, evt: Evenement, album: Album):
         if getattr(f, "size", 0) > MAX_VIDEO_BYTES:
             return Response({"detail": "Vidéo trop volumineuse (max 500Mo)."}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
 
-    moderation_active = bool(getattr(evt, "moderation_active", False))
-    auto_approve = bool(plan and not plan.moderation_enabled)
-    approuve = False if moderation_active else auto_approve
+    # Règle métier demandée : tous les uploads invités sont approuvés automatiquement.
+    approuve = True
 
     media = Media.objects.create(
         evenement=evt,
@@ -579,8 +605,11 @@ class EvenementPhotoWallQRCodeView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, slug: str):
-        evt = get_object_or_404(Evenement, slug=slug)
-        url = f"{request.scheme}://{request.get_host()}/photowall/{evt.slug}"
+        code = normalize_public_code(slug)
+        evt = get_object_or_404(
+            Evenement.objects.filter(Q(slug=slug) | Q(public_code=code))
+        )
+        url = f"{request.scheme}://{request.get_host()}/photowall/{evt.public_code or evt.slug}"
         png = build_photowall_qr_bytes(url)
         return HttpResponse(png, content_type="image/png")
 
@@ -591,18 +620,22 @@ class EvenementPhotoWallPlaylistView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, slug: str):
-        evt = get_object_or_404(Evenement, slug=slug, actif=True)
+        code = normalize_public_code(slug)
+        evt = get_object_or_404(
+            Evenement.objects.filter(actif=True).filter(Q(slug=slug) | Q(public_code=code))
+        )
         medias_qs = evt.medias.filter(approuve=True).order_by("-created_at")
         cap = 2000
         medias = list(medias_qs[:cap])
         data = PublicAlbumMediaSerializer(medias, many=True, context={"request": request}).data
-        qrcode_path = reverse("evenements-album-qrcode", kwargs={"slug": evt.slug, "album_slug": "public"})
+        qrcode_path = reverse("evenements-album-qrcode-upload", kwargs={"slug": evt.slug, "album_slug": "public"})
         qrcode_url = request.build_absolute_uri(qrcode_path)
         return Response(
             {
                 "evenement": {
                     "titre": evt.titre,
                     "slug": evt.slug,
+                    "public_code": evt.public_code,
                     "qrcode_url": qrcode_url,
                 },
                 "medias": data,
@@ -681,4 +714,40 @@ class OrganizerDashboardStatsView(APIView):
                 "medias_by_event": medias_by_event,
             }
         )
+
+
+class PublicEventsListView(APIView):
+    """Liste publique des événements en cours et futurs (avec album public)."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        events_qs = (
+            Evenement.objects.filter(actif=True)
+            .prefetch_related("albums")
+            .order_by("-date")
+        )
+
+        payload = []
+        for evt in events_qs:
+            public_album = next((a for a in evt.albums.all() if a.is_public or a.slug == "public"), None)
+            if not public_album:
+                continue
+            payload.append(
+                {
+                    "titre": evt.titre,
+                    "slug": evt.slug,
+                    "public_code": evt.public_code,
+                    "date": evt.date,
+                    "expires_at": evt.expires_at,
+                    "description": evt.description,
+                    "album_public": {
+                        "slug": public_album.slug,
+                        "public_code": public_album.public_code,
+                        "guest_upload_enabled": public_album.guest_upload_enabled,
+                    },
+                }
+            )
+
+        return Response(payload)
 

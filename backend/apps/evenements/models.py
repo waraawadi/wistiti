@@ -88,6 +88,10 @@ class Evenement(models.Model):
         base = self.qr_entry_base.rstrip("/")
         return f"{base}/{self.public_code}/{album.public_code}"
 
+    def qr_upload_url_for_album(self, album: "Album") -> str:
+        base = self.qr_entry_base.rstrip("/")
+        return f"{base}/{self.public_code}/{album.public_code}/upload"
+
 
 class Media(models.Model):
     class MediaType(models.TextChoices):
@@ -171,6 +175,10 @@ class Album(models.Model):
     def public_url(self) -> str:
         # URL encodée dans le QR : PUBLIC_QR_ENTRY_BASE_URL (défaut = frontend) / code_evt / code_album
         return self.evenement.qr_entry_url_for_album(self)
+
+    @property
+    def upload_url(self) -> str:
+        return self.evenement.qr_upload_url_for_album(self)
 
 
 class AlbumQRCode(models.Model):
