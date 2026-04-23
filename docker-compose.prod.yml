@@ -251,7 +251,7 @@ services:
       django_asgi:
         condition: service_healthy
       django_wsgi:
-        condition: service_healthy
+        condition: service_started
       frontend_wistitii:
         condition: service_started
     healthcheck:
