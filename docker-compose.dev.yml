@@ -131,6 +131,8 @@ services:
       NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost}
       NEXT_PUBLIC_FEDAPAY_PUBLIC_KEY: ${NEXT_PUBLIC_FEDAPAY_PUBLIC_KEY:-}
       NEXT_PUBLIC_FEDAPAY_ENV: ${NEXT_PUBLIC_FEDAPAY_ENV:-sandbox}
+      NEXT_PUBLIC_APP_NAME: ${APP_NAME:-Wistitii}
+      NEXT_PUBLIC_SITE_URL: ${PUBLIC_FRONTEND_BASE_URL:-http://localhost:3000}
       PNPM_HOME: /pnpm
       PNPM_STORE_DIR: /pnpm/store
     command:

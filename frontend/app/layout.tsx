@@ -17,9 +17,41 @@ const display = Inter({
   display: "swap",
 });
 
+const appName = process.env.NEXT_PUBLIC_APP_NAME || "Wistitii";
+const appDescription = "Partage de photos d'événements";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://wistitii.com";
+
 export const metadata: Metadata = {
-  title: "PhotoEvent",
-  description: "Partage de photos d’événements",
+  metadataBase: new URL(siteUrl),
+  title: appName,
+  description: appDescription,
+  applicationName: appName,
+  icons: {
+    icon: [{ url: "/images/wistitii-logo.png", type: "image/png" }],
+    apple: [{ url: "/images/wistitii-logo.png", type: "image/png" }],
+    shortcut: ["/images/wistitii-logo.png"],
+  },
+  openGraph: {
+    title: appName,
+    description: appDescription,
+    siteName: appName,
+    type: "website",
+    locale: "fr_FR",
+    images: [
+      {
+        url: "/images/wistitii-logo.png",
+        width: 1024,
+        height: 341,
+        alt: appName,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: appName,
+    description: appDescription,
+    images: ["/images/wistitii-logo.png"],
+  },
 };
 
 export default function RootLayout({
